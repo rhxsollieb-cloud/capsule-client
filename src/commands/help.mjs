@@ -7,6 +7,7 @@ const usage = {
   update: "update 名称 --token 当前token [--description 简介] [--engine node --entry 入口]\n更新顶层元数据并形成对应提交。",
   entries: "entries 名称 [--limit 数量] [--offset 偏移]\n列出胶囊内部文件。",
   read: "read 名称 [相对路径] [--from 行号] [--limit 行数]\n单文件直接读取自身，目录省略路径读取说明.md。",
+  preview: "preview 名称 [相对路径]\n只读提取 .docx 正文与表格、.xlsx 工作表。最大 16 MiB 原件，最多 8 张表、每表 200 行与 30 列；保留提交号与截断提示，公式不执行。",
   query: "query 名称 [--sql SQL --params JSON] [--text 文本 --entry 相对路径] [--limit 数量 --offset 偏移]\n通过同一接口查询SQLite或检索实际文本文件。SQLite查询只读，参数采用JSON数组或对象。",
   write: "write 名称 --token 当前token [--sql SQL --params JSON | --file statements数组文件 | --body 文本文件 --entry 相对路径]\n统一文本写入或SQLite事务写入，成功形成一次提交。",
   get: "get 名称 [相对路径] 目标文件\n单文件省略相对路径。流式获取原件并拒绝覆盖已有目标，数据库媒体路径使用media/文件名。",

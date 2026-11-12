@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="light dark">
     <title>Capsule · 知识工作台</title>
     <link rel="stylesheet" href="/styles.css">
     <script type="module" src="/app.mjs"></script>
@@ -11,8 +11,9 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Capsule 工作台"><span class="brand-mark">C</span><strong>Capsule</strong></a>
+        <a class="brand" href="/" aria-label="Capsule 工作台"><span class="brand-mark" data-icon="capsule"></span><span><strong>Capsule</strong><small>知识工作台</small></span></a>
         <label class="global-search"><span data-icon="search"></span><input id="search" type="search" placeholder="搜索 cap 名称或简介" autocomplete="off" aria-label="搜索知识库"><kbd>⌘ K</kbd></label>
+        <button id="theme-toggle" class="button theme-toggle" type="button" title="切换明暗主题">深色</button>
         <button id="connection" class="connection-status" type="button" title="重新检查连接"><span class="connection-dot"></span><span id="connection-label">连接中</span></button>
       </header>
       <div class="workspace">
@@ -25,6 +26,7 @@
         <aside class="sidebar">
           <div class="sidebar-header"><h2>知识库</h2><div class="button-group"><button id="refresh-tree" class="icon-button" title="刷新目录" aria-label="刷新目录" data-icon="refresh"></button><button id="new-cap" class="icon-button" title="新建 cap" aria-label="新建 cap" data-icon="plus"></button></div></div>
           <div class="sidebar-tabs" role="tablist" aria-label="知识视图"><button id="mode-tree" class="tab-button active" role="tab" aria-selected="true">虚拟路径</button><button id="mode-all" class="tab-button" role="tab" aria-selected="false">全部 cap</button></div>
+          <div id="kind-filters" class="kind-filters" aria-label="按内容类别筛选"></div>
           <div id="tree" class="tree-scroll" aria-label="知识节点"></div>
           <div class="sidebar-footer"><span data-icon="branch"></span><span id="tree-caption">按需展开内容</span></div>
         </aside>

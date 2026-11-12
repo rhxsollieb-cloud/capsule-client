@@ -4,6 +4,9 @@ import { icon } from "./icons.mjs";
 import { TextEditor } from "./editor.mjs";
 import { DatabaseView } from "./database.mjs";
 import { downloadButton, emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
+import { officeView } from "./office.mjs";
+import { overviewView } from "./overview.mjs";
+import { markdownOutline } from "./markdown.mjs";
 
 export class Workspace {
   constructor({ inspector, onError, onChanged, onCreate, onRun, onUpload, onRevert }) {
@@ -17,6 +20,13 @@ export class Workspace {
       onDirty: () => this.chrome(),
     });
     emptyView(this.content, onCreate);
+    this.inspector.onOpenEntry = (entry) => this.openFile(entry);
+    this.inspector.onOpenTable = (table) => this.showDatabase(table);
+  }
+  async home(onOpen) {
+    if (this.cap) return;
+    const selected = this.selection;
+    await overviewView(this.content, onOpen, this.onCreate, () => selected === this.selection && !this.cap);
   }
   hasDirty() { return this.cap && this.editor.hasDirty(this.cap.name, this.entry); }
   async select(item) {
@@ -29,7 +39,9 @@ export class Workspace {
       const cap = await action("stat", { name: item.name });
       if (selected !== this.selection) return;
       this.cap = cap;
+      this.databaseTable = undefined;
       this.inspector.show(cap);
+      this.inspector.context({ label: "当前 cap", values: [cap.name] });
       this.mode = cap.kind === "database" ? "database" : directoryKinds.has(cap.kind) ? "files" : "content";
       this.chrome();
       await this.load();
@@ -42,7 +54,7 @@ export class Workspace {
     if (!this.cap) return;
     const cap = this.cap;
     const tab = node("div", "editor-tab active");
-    tab.append(icon(this.entry ? fileKind(this.entry) : cap.kind), node("span", "", this.entry?.split("/").at(-1) || cap.name));
+    tab.append(icon(this.entry ? fileKind(this.entry) : cap.kind, `kind-${cap.kind}`), node("span", "", this.entry?.split("/").at(-1) || cap.name));
     if (this.hasDirty()) tab.append(node("span", "dirty-indicator", "●"));
     replace(document.getElementById("editor-tabs"), tab);
     const crumbs = [node("span", "", this.item?.path || cap.name)];
@@ -85,26 +97,33 @@ export class Workspace {
       return;
     }
     if (this.mode === "database") {
-      this.database = new DatabaseView(this.content, cap, { isCurrent, onError: this.onError });
+      this.database = new DatabaseView(this.content, cap, { isCurrent, onError: this.onError, table: this.databaseTable });
       if (isCurrent()) this.displayedCommit = cap.commit;
       return;
     }
     if (this.mode === "files") {
       if (!background) replace(this.content, node("p", "loading", "正在读取文件…"));
       try {
-        this.filePage = await action("entries", { name: cap.name, limit: 100 });
-        if (isCurrent()) this.renderFiles(isCurrent);
+        const page = await action("entries", { name: cap.name, limit: 100 });
+        if (!isCurrent()) return;
+        this.filePage = page;
+        this.renderFiles(isCurrent);
+        this.displayedCommit = cap.commit;
       } catch (error) { if (isCurrent()) this.showError(error); }
-      this.displayedCommit = cap.commit;
       return;
     }
     const kind = fileKind(entry || cap.name, entry ? "file" : cap.kind);
     if (["image", "audio", "video"].includes(kind)) {
-      mediaView(this.content, cap, entry);
+      mediaView(this.content, cap, entry, (context) => { if (isCurrent()) this.inspector.context(context); });
       this.displayedCommit = cap.commit;
       return;
     }
-    if (["file", "excel", "word"].includes(kind)) {
+    if (["excel", "word"].includes(kind)) {
+      await officeView(this.content, cap, entry, isCurrent, this.onError, (context) => this.inspector.context(context));
+      if (isCurrent()) this.displayedCommit = cap.commit;
+      return;
+    }
+    if (kind === "file") {
       fileView(this.content, cap, entry);
       this.displayedCommit = cap.commit;
       return;
@@ -119,6 +138,7 @@ export class Workspace {
       }
       this.cap = { ...this.cap, description: record.description ?? this.cap.description, runtime: record.runtime, commit: record.commit, token: record.token };
       this.editor.open(this.content, this.cap, entry, record);
+      this.inspector.context({ label: /\.md$/i.test(entry || cap.name) ? "正文大纲" : "文件内容", headings: markdownOutline(record.body), values: [`${record.body.split("\n").length} 行 · ${record.body.length.toLocaleString()} 字符`], entry });
       this.displayedCommit = record.commit;
       this.chrome();
     } catch (error) {
@@ -137,10 +157,10 @@ export class Workspace {
       } catch (error) { this.onError(error); }
     });
   }
-  openFile(entry) { this.entry = entry; this.mode = "content"; this.chrome(); this.load(); }
-  showFiles() { this.entry = undefined; this.mode = "files"; this.chrome(); this.load(); }
-  showDatabase() { this.entry = undefined; this.mode = "database"; this.chrome(); this.load(); }
-  showHistory() { this.mode = "history"; this.chrome(); this.load(); }
+  openFile(entry) { this.entry = entry; this.mode = "content"; this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
+  showFiles() { this.entry = undefined; this.mode = "files"; this.inspector.context({ label: "文件集合", values: ["从中央列表或侧边原生文件导航进入。"] }); this.chrome(); this.load(); }
+  showDatabase(table) { this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
+  showHistory() { this.mode = "history"; this.inspector.context({ label: "版本历史", values: ["此 cap 的内容与元数据提交。回撤会通过队列生成新版本。"] }); this.chrome(); this.load(); }
   showError(error) {
     replace(this.content, node("p", "error-message file-empty", error.message));
     this.onError(error);

@@ -3,7 +3,7 @@ import globals from "globals";
 export default [
   { ignores: [".local/**", "node_modules/**"] },
   {
-    files: ["src/**/*.mjs", "test/**/*.mjs", "*.mjs"],
+    files: ["src/**/*.mjs", "test/**/*.mjs", "scripts/**/*.mjs", "*.mjs"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: globals.node },
     rules: {
       "no-undef": "error",

@@ -2,6 +2,7 @@ import { capsuleName, entryPath } from "../system/paths.mjs";
 import { runCapsule } from "../runtime/run.mjs";
 import { synchronize } from "../cache/sync.mjs";
 import { uiError } from "./errors.mjs";
+import { previewOffice } from "../preview/office.mjs";
 
 const allowed = {
   health: [],
@@ -10,6 +11,7 @@ const allowed = {
   stat: ["name", "commit"],
   entries: ["name", "limit", "offset"],
   read: ["name", "entry", "from", "limit"],
+  preview: ["name", "entry"],
   history: ["name", "limit", "offset"],
   events: ["status", "limit", "offset"],
   event: ["id"],
@@ -59,6 +61,7 @@ export async function performAction(api, input) {
   }
   if (action === "create") return api.json("/api/capsules", "POST", value);
   if (action === "mount") return api.json("/api/mounts", "POST", value);
+  if (action === "preview") return previewOffice(api, value.name, value.entry);
   const name = value.name;
   delete value.name;
   if (action === "stat") return api.json(api.path(name, "", value));

@@ -1,5 +1,5 @@
 import { action } from "./api.mjs";
-import { button, node, replace } from "./dom.mjs";
+import { button, kindLabels, node, replace } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 
 export class KnowledgeTree {
@@ -10,6 +10,7 @@ export class KnowledgeTree {
     this.onEmpty = onEmpty;
     this.mode = "tree";
     this.query = "";
+    this.kind = "";
     this.expanded = new Map();
     this.selected = null;
     this.items = [];
@@ -17,10 +18,29 @@ export class KnowledgeTree {
     this.request = 0;
     document.querySelector("#mode-tree").addEventListener("click", () => this.setMode("tree"));
     document.querySelector("#mode-all").addEventListener("click", () => this.setMode("all"));
+    const filters = document.getElementById("kind-filters");
+    const label = node("label", "kind-filter-label", "内容类别");
+    this.filter = node("select", "kind-filter-select");
+    this.filter.setAttribute("aria-label", "筛选 cap 类别");
+    this.filter.append(node("option", "", "所有类别"));
+    this.filter.firstChild.value = "";
+    for (const [kind, title] of Object.entries(kindLabels)) {
+      const option = node("option", "", title);
+      option.value = kind;
+      this.filter.append(option);
+    }
+    this.filter.addEventListener("change", () => {
+      this.kind = this.filter.value;
+      this.mode = "all";
+      this.refresh();
+    });
+    label.append(this.filter);
+    filters.append(label);
+    this.element.addEventListener("keydown", (event) => this.keyboard(event));
   }
   async setMode(mode) {
     this.mode = mode;
-    if (mode === "tree") this.query = "";
+    if (mode === "tree") { this.query = ""; this.kind = ""; this.filter.value = ""; }
     this.expanded.clear();
     await this.refresh();
   }
@@ -38,6 +58,15 @@ export class KnowledgeTree {
       if (request !== this.request) return;
       this.items = result.items;
       this.nextOffset = result.nextOffset;
+      const expandedPaths = [...this.expanded.keys()];
+      const children = await Promise.allSettled(expandedPaths.map((path) => action("ls", { path, limit: 50 })));
+      if (request !== this.request) return;
+      children.forEach((child, index) => {
+        const path = expandedPaths[index];
+        if (!this.expanded.has(path)) return;
+        if (child.status === "fulfilled") this.expanded.set(path, child.value);
+        else this.expanded.delete(path);
+      });
       this.render();
       this.onEmpty?.(result.total === 0);
     } catch (error) {
@@ -49,7 +78,7 @@ export class KnowledgeTree {
   fetchPage(offset) {
     return this.mode === "tree"
       ? action("ls", { path: "/", limit: 50, offset })
-      : action("list", { query: this.query || undefined, limit: 50, offset });
+      : action("list", { query: this.query || undefined, kind: this.kind || undefined, limit: 50, offset });
   }
   async more() {
     const request = this.request;
@@ -96,12 +125,21 @@ export class KnowledgeTree {
     this.render();
     this.onSelect(item);
   }
+  async chooseFromOverview(item) {
+    const visible = [...this.items, ...[...this.expanded.values()].flatMap((page) => page.items || [])].find((candidate) => candidate.name === item.name);
+    if (visible) this.choose(visible);
+    else {
+      await this.setMode("all");
+      this.choose(item);
+    }
+  }
   row(item, depth) {
     const container = node("div", "tree-node");
     const selected = this.selected?.name === item.name &&
       (this.mode === "all" || this.selected.path === item.path);
     const row = node("div", `tree-row${selected ? " selected" : ""}`);
     row.dataset.depth = String(Math.min(depth, 12));
+    row.dataset.path = item.path || item.name;
     row.title = item.description || item.name;
     const toggle = button("", (event) => {
       event.stopPropagation();
@@ -112,6 +150,10 @@ export class KnowledgeTree {
     toggle.setAttribute("aria-label", this.expanded.has(item.path) ? "折叠" : "展开");
     toggle.setAttribute("aria-expanded", String(this.expanded.has(item.path)));
     const select = button("", () => this.choose(item), "tree-select");
+    select.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" && item.hasChildren && !this.expanded.has(item.path)) { event.preventDefault(); this.toggle(item); }
+      if (event.key === "ArrowLeft" && this.expanded.has(item.path)) { event.preventDefault(); this.toggle(item); }
+    });
     select.append(icon(item.kind, `node-icon kind-${item.kind}`), node("span", "node-label", item.name));
     row.append(toggle, select);
     container.append(row);
@@ -135,6 +177,15 @@ export class KnowledgeTree {
       element.setAttribute("aria-selected", String(this.mode === mode));
     }
     document.getElementById("tree-caption").textContent = this.query ? `搜索 · ${this.query}` : this.mode === "tree" ? "按需展开内容" : "包含未挂载的 cap";
+    document.getElementById("kind-filters").classList.toggle("hidden", this.mode !== "all");
+  }
+  keyboard(event) {
+    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+    const rows = [...this.element.querySelectorAll(".tree-select")];
+    const index = rows.indexOf(document.activeElement);
+    if (index < 0) return;
+    event.preventDefault();
+    rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
   }
   render() {
     this.renderModes();

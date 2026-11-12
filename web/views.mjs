@@ -11,15 +11,19 @@ export function emptyView(container, onCreate) {
   replace(container, empty);
 }
 
-export function filesView(container, _cap, result, onOpen, onMore) {
+export function filesView(container, cap, result, onOpen, onMore) {
   const wrapper = node("div", "files-view");
+  const hero = node("div", `container-heading kind-${cap.kind}`);
+  hero.append(icon(cap.kind, "container-icon"), node("div", "content-eyebrow", cap.kind === "code" ? "CODE WORKSPACE" : "FILE COLLECTION"), node("h1", "", cap.name), node("p", "", cap.description || "原生文件通过统一接口管理，目录内容独立保存在此 cap 中。"));
+  if (cap.runtime) hero.append(button(`打开入口 · ${cap.runtime.entry}`, () => onOpen(cap.runtime.entry), "button secondary"));
+  wrapper.append(hero);
   const heading = node("div", "file-toolbar");
   heading.append(node("strong", "", "原生文件"), node("span", "muted", `${result.total ?? result.items.length} 个文件`));
   const list = node("div", "file-list");
   if (!result.items.length) list.append(node("p", "muted file-empty", "还没有文件，可上传内容到此 cap。"));
   for (const file of result.items) {
     const row = button("", () => onOpen(file.path), "file-row");
-    row.append(icon(fileKind(file.path)), node("span", "file-name mono", file.path), node("span", "file-size muted", sizeLabel(file.size)));
+    row.append(icon(fileKind(file.path), `kind-${fileKind(file.path)}`), node("span", "file-name mono", file.path), node("span", "file-size muted", sizeLabel(file.size)), icon("chevron"));
     list.append(row);
   }
   wrapper.append(heading, list);
@@ -28,10 +32,13 @@ export function filesView(container, _cap, result, onOpen, onMore) {
   replace(container, wrapper);
 }
 
-export function mediaView(container, cap, entry) {
+export function mediaView(container, cap, entry, onContext) {
   const name = entry || cap.name;
   const kind = fileKind(name, entry ? "file" : cap.kind);
-  const wrapper = node("div", "media-preview");
+  const wrapper = node("div", `media-preview kind-${kind} media-${kind}`);
+  const title = node("div", "media-title");
+  title.append(icon(kind), node("span", "content-eyebrow", kind.toUpperCase()), node("strong", "", name));
+  const stage = node("div", "media-stage");
   const element = node(kind === "image" ? "img" : kind);
   element.src = contentUrl(cap.name, entry);
   if (kind === "image") element.alt = name;
@@ -41,7 +48,24 @@ export function mediaView(container, cap, entry) {
   }
   const error = node("p", "error-message hidden", "当前原件无法预览，可下载后查看或上传新的原件。");
   element.addEventListener("error", () => error.classList.remove("hidden"));
-  wrapper.append(element, error, downloadButton(cap.name, entry));
+  const metadata = node("span", "mono", "读取原件信息…");
+  const report = () => {
+    const duration = Number.isFinite(element.duration) ? `${Math.floor(element.duration / 60)}:${String(Math.floor(element.duration % 60)).padStart(2, "0")}` : "";
+    const dimensions = kind === "image" ? `${element.naturalWidth} × ${element.naturalHeight} px` : kind === "video" ? `${element.videoWidth} × ${element.videoHeight} px` : "";
+    const values = [dimensions, duration && `时长 ${duration}`, "原件流式读取"].filter(Boolean);
+    metadata.textContent = values.join(" · ");
+    onContext?.({ label: "媒体信息", values });
+  };
+  element.addEventListener(kind === "image" ? "load" : "loadedmetadata", report);
+  if (kind === "audio") {
+    const sleeve = node("div", "audio-sleeve");
+    sleeve.append(icon("audio", "audio-mark"), node("span", "content-eyebrow", "AUDIO ORIGINAL"), node("h2", "", name), node("p", "", "原生音频 · 点击播放器试听"));
+    stage.append(sleeve);
+  }
+  stage.append(element, error);
+  const footer = node("div", "media-footer");
+  footer.append(metadata, downloadButton(cap.name, entry));
+  wrapper.append(title, stage, footer);
   replace(container, wrapper);
 }
 

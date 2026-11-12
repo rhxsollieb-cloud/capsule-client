@@ -1,7 +1,7 @@
 # 本地图形客户端
 
-- 状态：基础工作台开发中。
-- 依据：用户要求补齐并打开前端，图形入口复用既有客户端能力。
+- 状态：本地工作台开发中。
+- 依据：图形入口复用既有客户端能力，视觉沿用VideoSeed的硬塑料表面、短阴影和高对比文字。
 
 ## 进程与边界
 
@@ -16,7 +16,7 @@
 - GET /ui/content?name=...&entry=...流式提供预览，支持Range。download=1下载原件。
 - PUT /ui/upload?name=...&entry=...接收原件字节，携If-Match与X-Capsule-Session；临时保存后通过统一客户端上传，失败清理暂存。
 
-action提供health/list/ls/stat/entries/read/history/events/event/create/save/update/query/write/mount/revert/run/sync。save写文本；query按类型执行原生查询；revert返回入队事件由界面轮询；run仅在用户明确操作后执行。
+action提供health/list/ls/stat/entries/read/preview/history/events/event/create/save/update/query/write/mount/revert/run/sync。save写文本；query按类型执行原生查询；preview复用客户端只读Office解析；revert返回入队事件由界面轮询；run仅在用户明确操作后执行。
 
 创建cap和新增挂载是两个明确请求。挂载失败时应说明cap已创建并能从全部cap找回，避免重试创建造成重复或名称冲突。
 
@@ -24,7 +24,22 @@ action提供health/list/ls/stat/entries/read/history/events/event/create/save/up
 
 选择cap和读取文件按请求序号绑定，晚到响应不覆盖其他选择。正文草稿保存读取时的baseToken，后台刷新不替换旧草稿的基线。保存遇409保留正文和基线，由用户重载或合并后提交。
 
-媒体、办公原件和正文按实际支持能力展示。办公文件可下载原件，完整语义编辑继续开发。界面不创建演示业务数据，空库显示实际空状态和新建入口。
+简介草稿同样绑定读取时的token，外部更新不能替换未提交简介的基线。切换内容不隐式保存，离开页面时检查未保存草稿。
+
+## 内容与侧栏
+
+左侧负责虚拟知识结构及类别筛选，知识树在当前位置展开。中间负责当前内容的阅读、编辑或操作，右侧负责该内容的上下文和可折叠属性；版本与运行事件在底部面板查看。亮色与深色主题使用同一布局和类型色，不以模糊或低对比文字表达层级。
+
+- 文本提供安全Markdown阅读和正文编辑，代码沿用带行号的文本编辑，并可浏览原生文件及显式运行。
+- 图片使用独立预览画布，音频与视频使用原生媒体控制，不自动播放。
+- Word提取标题、段落与表格，Excel按工作表展示单元格。当前只读解析docx/xlsx，原排版、图表、嵌入对象及公式计算不属于预览能力；其他办公格式保留原件下载。
+- 文件集合显示自身原生条目，SQLite显示表浏览与分页查询结果。数据库媒体仍通过统一内容接口访问。
+
+Office解析在客户端执行并限制原件大小、ZIP条目及展开XML大小，禁止DOCTYPE；内容只作为文本与单元格数据返回，不执行宏或外部资源。CLI preview使用同一解析模块。
+
+## 开发示例
+
+演示数据通过独立脚本显式种入服务端，界面读取真实cap，不在浏览器伪造业务记录。样例包含文本、图片、音视频、Word、Excel、文件集合、数据库及可运行代码。现有同名cap不会被种入脚本覆盖，来源与重建方法见[开发示例](demo-data.md)。空库仍显示实际空状态和新建入口。
 
 ## 验证
 

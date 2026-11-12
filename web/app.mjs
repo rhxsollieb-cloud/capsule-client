@@ -6,8 +6,10 @@ import { Workspace } from "./workspace.mjs";
 import { Dialogs } from "./dialogs.mjs";
 import { EventPanel } from "./panel.mjs";
 import { node, replace } from "./dom.mjs";
+import { initializeTheme } from "./theme.mjs";
 
 fillIcons();
+initializeTheme();
 let toastTimer;
 function notify(message, error = false) {
   const toast = document.getElementById("toast");
@@ -116,6 +118,8 @@ async function connect() {
     const health = await action("health");
     connection(health.status === "ok", health.status === "ok" ? "已连接" : "连接异常");
     await tree.refresh();
+    if (!tree.selected && tree.mode === "tree" && tree.items.length === 1 && tree.items[0].hasChildren) await tree.toggle(tree.items[0]);
+    await workspace.home((item) => tree.chooseFromOverview(item));
     await workspace.refresh();
   } catch (error) {
     connection(false, "连接失败 · 点击重试");

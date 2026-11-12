@@ -1,6 +1,7 @@
 import { action } from "./api.mjs";
 import { button, node, replace, shortCommit } from "./dom.mjs";
 import { icon } from "./icons.mjs";
+import { renderMarkdown } from "./markdown.mjs";
 
 export class TextEditor {
   constructor({ onSaved, onError, onDirty }) {
@@ -19,6 +20,10 @@ export class TextEditor {
       this.drafts.set(key, draft);
     }
     const page = node("div", "editor-page");
+    const markdown = /\.md$/i.test(entry || cap.name);
+    const toolbar = node("div", "reading-toolbar");
+    const reading = node("div", "reading-surface");
+    let mode = markdown && !draft.dirty ? "read" : "edit";
     const banner = node("div", "editor-notice");
     this.current = { key, banner, cap, entry, remote: draft.baseToken !== record.token };
     const shell = node("div", "editor-shell");
@@ -39,6 +44,19 @@ export class TextEditor {
       save.disabled = !draft.dirty || draft.saving;
       detail.textContent = `${draft.dirty ? "未保存" : "已保存"} · 基于 ${shortCommit(draft.baseCommit)} · ${input.value.split("\n").length} 行`;
     };
+    const readButton = button("阅读", () => switchMode("read"), "button ghost");
+    const editButton = button(markdown ? "编辑 Markdown" : "源代码", () => switchMode("edit"), "button ghost");
+    const switchMode = (next) => {
+      mode = next;
+      shell.classList.toggle("hidden", mode === "read");
+      reading.classList.toggle("hidden", mode !== "read");
+      readButton.classList.toggle("active", mode === "read");
+      editButton.classList.toggle("active", mode === "edit");
+      if (mode === "read") replace(reading, renderMarkdown(draft.body));
+    };
+    toolbar.append(node("span", "content-eyebrow", markdown ? "MARKDOWN" : (entry || cap.name).split(".").at(-1).toUpperCase()));
+    if (markdown) toolbar.append(readButton, editButton);
+    else toolbar.append(node("span", "muted", "UTF-8 · 直接编辑原生文件"));
     input.addEventListener("input", () => {
       draft.body = input.value;
       draft.dirty = draft.body !== draft.original;
@@ -60,10 +78,11 @@ export class TextEditor {
     });
     shell.append(gutter, input);
     footer.append(detail, save);
-    page.append(banner, shell, footer);
+    page.append(toolbar, banner, reading, shell, footer);
     replace(container, page);
     this.renderNotice(key);
     update();
+    switchMode(mode);
   }
   renderNotice(key) {
     if (this.current?.key !== key) return;

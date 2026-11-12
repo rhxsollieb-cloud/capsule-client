@@ -13,6 +13,11 @@ export function button(text, handler, className = "button secondary") {
 }
 
 export function replace(element, ...children) {
+  for (const media of element.querySelectorAll("audio, video")) {
+    media.pause();
+    media.removeAttribute("src");
+    media.load();
+  }
   element.replaceChildren(...children.filter(Boolean));
 }
 

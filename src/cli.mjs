@@ -11,6 +11,7 @@ import { eventCommand } from "./commands/events.mjs";
 import { synchronize } from "./cache/sync.mjs";
 import { runCapsule } from "./runtime/run.mjs";
 import { doctor } from "./runtime/doctor.mjs";
+import { previewOffice } from "./preview/office.mjs";
 
 export async function dispatch(args, api) {
   switch (args.command) {
@@ -18,6 +19,8 @@ export async function dispatch(args, api) {
       return api.json("/api/health");
     case "doctor":
       return doctor(api.config);
+    case "preview":
+      return previewOffice(api, args.positional[0], args.positional[1]);
     case "sync":
       return synchronize(api, args.positional[0]);
     case "run":
