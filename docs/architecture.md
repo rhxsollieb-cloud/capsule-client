@@ -9,7 +9,7 @@
 
 web/维护浏览器呈现和草稿，src/ui/提供本地静态资源与同源桥接。桥接复用ApiClient和现有同步/运行模块，凭据保留在本地进程。图形接口见[ui.md](ui.md)。
 
-src/preview/使用成熟库提供只读Office解析，src/office/负责单元格与模板写回；CLI与图形桥接复用同一入口。处理前限制原件、ZIP条目和展开XML，不另建内容登记库。写回基于读取的原件及token，通过统一上传形成提交；具体保真边界见office.md。
+src/office/sessions.mjs为CLI和图形桥接提供ONLYOFFICE会话、保存及恢复入口。web/office.mjs维护编辑器生命周期，office-state.mjs单独维护脏状态与保存确认，活跃编辑器不会被后台cap刷新重建。服务端保存回调仍通过统一内容写入及Git提交；具体边界见office.md。src/preview/和其余office批处理模块继续承担Agent渐进提取与显式结构化修改，不再提供主界面模板编辑。
 
 src/database/从SQLite自身读取表结构，适配带主键的业务行操作；SQL仍由服务端node:sqlite执行。浏览器Tabulator网格负责排序、筛选与编辑草稿，保存经共享适配和原有SQL事务入口，不增加内部查询库。browser/仅维护浏览器依赖入口，esbuild生成忽略的web/vendor/供同源加载。
 

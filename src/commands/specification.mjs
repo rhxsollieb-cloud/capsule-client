@@ -13,6 +13,11 @@ export const options = {
   entries: ["limit", "offset"],
   read: ["from", "limit"],
   preview: [],
+  "office-status": [],
+  "office-open": ["token"],
+  "office-session": [],
+  "office-save": [],
+  "office-recovery": [],
   "office-write": ["file", "token"],
   table: ["limit", "offset"],
   "table-write": ["file", "token"],
@@ -44,6 +49,11 @@ export const arity = {
   entries: [1, 1],
   read: [1, 2],
   preview: [1, 2],
+  "office-status": [0, 0],
+  "office-open": [1, 2],
+  "office-session": [1, 1],
+  "office-save": [1, 1],
+  "office-recovery": [2, 2],
   "office-write": [1, 2],
   table: [2, 2],
   "table-write": [2, 2],
@@ -69,7 +79,7 @@ export function validateValues(command, values) {
   if (values.kind !== undefined && !kinds.includes(values.kind))
     throw new Error("类别需为 " + kinds.join("、"));
   if (
-    ["put", "remove-entry", "move", "unmount", "write", "update", "revert", "office-write", "table-write"].includes(command) &&
+    ["put", "remove-entry", "move", "unmount", "write", "update", "revert", "office-write", "office-open", "table-write"].includes(command) &&
     !values.token
   )
     throw new Error("写入需要 --token，请先读取当前实体或位置版本");

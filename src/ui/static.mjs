@@ -14,7 +14,7 @@ const types = new Map([
   [".ico", "image/x-icon"],
 ]);
 
-export async function staticFile(request, response, pathname, webRoot) {
+export async function staticFile(request, response, pathname, webRoot, contentPolicy) {
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -41,7 +41,7 @@ export async function staticFile(request, response, pathname, webRoot) {
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
       "Cross-Origin-Resource-Policy": "same-origin",
-      "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      "Content-Security-Policy": contentPolicy || "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     });
     if (request.method === "HEAD") response.end();
     else await pipeline(createReadStream(file), response);

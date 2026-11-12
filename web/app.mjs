@@ -70,7 +70,9 @@ const workspace = new Workspace({
   }),
 });
 const tree = new KnowledgeTree(document.getElementById("tree"), {
-  onSelect: (item) => workspace.select(item),
+  onSelect: async (item) => {
+    if (await workspace.select(item) === false) { tree.selected = workspace.item; tree.render(); }
+  },
   onError,
 });
 
@@ -101,7 +103,7 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("beforeunload", (event) => {
   const dirty = [...workspace.editor.drafts.values(), ...inspector.drafts.values(), ...workspace.databaseDrafts.values()].some((draft) => draft.dirty);
-  if (dirty) { event.preventDefault(); event.returnValue = ""; }
+  if (dirty || workspace.office?.hasDirty()) { event.preventDefault(); event.returnValue = ""; }
 });
 
 function connection(connected, message) {

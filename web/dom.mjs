@@ -35,7 +35,7 @@ export function fileKind(name, kind = "file") {
   if (["mp4", "webm", "mov", "m4v"].includes(extension)) return "video";
   if (["xls", "xlsx"].includes(extension)) return "excel";
   if (["doc", "docx", "pdf"].includes(extension)) return "word";
-  if (["sqlite", "db", "zip", "exe", "bin"].includes(extension)) return "file";
+  if (["sqlite", "db", "zip", "exe", "bin", "pptx", "ppt"].includes(extension)) return "file";
   return "text";
 }
 

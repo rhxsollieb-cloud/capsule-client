@@ -13,12 +13,20 @@ export function configuration(env = process.env) {
     throw new Error("CAPSULE_SERVER_URL 需为服务端根地址");
   return {
     serverUrl: url.origin,
+    officeEditorUrl: officeOrigin(env.CAPSULE_ONLYOFFICE_URL || "http://127.0.0.1:8081"),
     token: env.CAPSULE_TOKEN || "",
     home: resolve(
       env.CAPSULE_CLIENT_HOME ||
         fileURLToPath(new URL("../.local", import.meta.url)),
     ),
   };
+}
+
+export function officeOrigin(value) {
+  const url = new URL(value);
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname))
+    throw new Error("ONLYOFFICE地址需要HTTP/HTTPS根地址，不能包含凭据或查询参数");
+  return url.origin;
 }
 
 export function assertNodeVersion() {

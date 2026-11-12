@@ -1,5 +1,10 @@
 const usage = {
   health: "health\n检查服务端协议和状态。",
+  "office-status": "office-status\n检查ONLYOFFICE配置和文档服务状态。",
+  "office-open": "office-open 名称 [内部路径] --token 当前token\n创建绑定原件版本的ONLYOFFICE编辑会话。返回config含短期原件票据，仅提供给当前编辑器。",
+  "office-session": "office-session 会话ID\n查看Office保存、冲突、版本与恢复原件状态。",
+  "office-save": "office-save 会话ID\n请求文档服务保存；查询office-session确认实际结果，不自动重放。",
+  "office-recovery": "office-recovery 会话ID 本地目标文件\n下载保存失败或冲突时保留的原件，不覆盖已有目标。",
   list: "list [--kind 类别] [--query 文本] [--limit 数量] [--offset 偏移]\n查询胶囊概要。单文件为text/image/audio/video/excel/word/file，目录为markdown/files/database/code。",
   ls: "ls [虚拟路径=/] [--limit 数量] [--offset 偏移]\n列出位置直属子项。",
   create: "create 名称 [--kind 类别=text] [--description 简介] [--body 本地文件] [--engine node --entry 入口]\n单文件直接平铺保存，markdown/files/database/code拥有目录。运行声明仅用于code。",

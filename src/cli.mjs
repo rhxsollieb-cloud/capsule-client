@@ -14,6 +14,7 @@ import { doctor } from "./runtime/doctor.mjs";
 import { readTable } from "./database/tables.mjs";
 import { structuredWriteCommand } from "./commands/structured-write.mjs";
 import { previewOffice } from "./preview/office.mjs";
+import { officeSessionCommand } from "./commands/office-session.mjs";
 
 export async function dispatch(args, api) {
   switch (args.command) {
@@ -21,6 +22,12 @@ export async function dispatch(args, api) {
       return api.json("/api/health");
     case "doctor":
       return doctor(api.config);
+    case "office-status":
+    case "office-open":
+    case "office-session":
+    case "office-save":
+    case "office-recovery":
+      return officeSessionCommand(api, args);
     case "office-write":
     case "table-write":
       return structuredWriteCommand(api, args);

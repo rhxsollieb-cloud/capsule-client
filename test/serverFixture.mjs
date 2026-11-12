@@ -17,7 +17,7 @@ export const missingServer = existsSync(applicationPath)
   ? false
   : "缺少服务端源码，请设置 CAPSULE_SERVER_ROOT 执行跨项目集成检查";
 
-export async function serverFixture(t, { token = "integration-only-token" } = {}) {
+export async function serverFixture(t, { token = "integration-only-token", office } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "capsule-contract-v3-"));
   const clientHome = join(directory, "client");
   const { createApplication } = await import(pathToFileURL(applicationPath).href);
@@ -26,6 +26,7 @@ export async function serverFixture(t, { token = "integration-only-token" } = {}
     host: "127.0.0.1",
     port: 0,
     token,
+    ...(office ? { office } : {}),
   });
   t.after(async () => {
     await application.close();
@@ -37,6 +38,7 @@ export async function serverFixture(t, { token = "integration-only-token" } = {}
     CAPSULE_SERVER_URL: application.url,
     CAPSULE_TOKEN: token,
     CAPSULE_CLIENT_HOME: clientHome,
+    ...(office ? { CAPSULE_ONLYOFFICE_URL: office.url } : {}),
   };
   const cli = async (...args) => {
     const result = await execute(process.execPath, [join(clientRoot, "src/cli.mjs"), ...args], {

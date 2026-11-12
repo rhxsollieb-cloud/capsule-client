@@ -16,7 +16,7 @@
 - GET /ui/content?name=...&entry=...流式提供预览，支持Range。download=1下载原件。
 - PUT /ui/upload?name=...&entry=...接收原件字节，携If-Match与X-Capsule-Session；临时保存后通过统一客户端上传，失败清理暂存。
 
-action提供health/list/ls/stat/entries/read/preview/office-write/table/table-write/history/events/event/create/save/update/query/write/mount/revert/run/sync。save写文本；query按类型执行原生查询；Office与表格读写复用客户端适配；revert返回入队事件由界面轮询；run仅在用户明确操作后执行。
+action提供health/list/ls/stat/entries/read/preview/office-write/office-status/office-open/office-session/office-save/table/table-write/history/events/event/create/save/update/query/write/mount/revert/run/sync。Office会话与表格读写复用客户端适配。GET /ui/office/recovery?id=...下载已保留的冲突原件。revert返回入队事件由界面轮询，run仅在用户明确操作后执行。
 
 创建cap和新增挂载是两个明确请求。挂载失败时应说明cap已创建并能从全部cap找回，避免重试创建造成重复或名称冲突。
 
@@ -32,10 +32,10 @@ action提供health/list/ls/stat/entries/read/preview/office-write/table/table-wr
 
 - Markdown cap固定README.md与assets/，使用markdown-it解析及DOMPurify清理，支持当前cap内的相对图片、音频和视频嵌入；raw HTML关闭，媒体不跨cap引用。上传默认进入assets/，正文通过编辑保存。普通text继续平铺；已有text不会自动转换。代码提供行号编辑，并可浏览原生文件及显式运行。
 - 图片使用独立预览画布，音频与视频使用原生媒体控制，不自动播放。
-- Word通过Mammoth提取标题、段落与表格，Excel通过ExcelJS按工作表展示单元格，SheetJS兼容部分ExcelJS不能解析的合法原件。兼容预览会明确只读，不重导出丢失样式。单元格修改与Word模板填写使用成熟库在原件上写回，保留原token；完整排版保真与公式执行不属于能力保证，见office.md。其他办公格式保留原件下载。
+- Office中央主视图嵌入ONLYOFFICE Docs，直接编辑DOCX/XLSX/PPTX。保存等待cap提交确认，后台刷新保持活跃编辑器。模板和单元格小表单退出主交互，额外的Agent提取与批处理命令保留，见office.md。
 - 文件集合显示自身原生条目，SQLite使用Tabulator显示表与分页查询结果，业务单元格可编辑后统一提交。无主键、系统表和自定义查询结果只读。数据库媒体仍通过统一内容接口访问，详见database.md。
 
-Office解析在客户端执行并限制原件大小、ZIP条目及展开XML大小，禁止DOCTYPE；内容只作为文本与单元格数据返回，不执行宏或外部资源。CLI preview/office-write使用同一适配。表格草稿保留原token，切表后仍可恢复；保存期间共享草稿锁定，不能通过切表再切回来覆盖待提交数据。
+ONLYOFFICE脚本、iframe和连接只允许CAPSULE_ONLYOFFICE_URL的固定来源，不加入通配来源或inline/eval。普通Bearer与文档服务JWT密钥不进入浏览器，编辑器配置使用短期票据。编辑器“变化已收集”不作为cap已保存，保存期间继续输入会保留dirty。冲突/失败保持会话并提供恢复原件；明确确认关闭时提醒恢复原件不一定含之后新输入。表格草稿保留原token，切表后仍可恢复；保存期间共享草稿锁定，不能通过切表再切回来覆盖待提交数据。
 
 ## 开发示例
 

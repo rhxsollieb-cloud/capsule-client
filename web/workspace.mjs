@@ -3,7 +3,8 @@ import { button, directoryKinds, fileKind, kindLabels, node, replace, shortCommi
 import { icon } from "./icons.mjs";
 import { TextEditor } from "./editor.mjs";
 import { downloadButton, emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
-import { officeView } from "./office.mjs";
+import { OfficeView } from "./office.mjs";
+import { isOfficeFile } from "./office-state.mjs";
 import { overviewView } from "./overview.mjs";
 import { markdownOutline } from "./markdown.mjs";
 import { NativeNavigator } from "./native-navigation.mjs";
@@ -33,8 +34,15 @@ export class Workspace {
     const selected = this.selection;
     await overviewView(this.content, onOpen, this.onCreate, () => selected === this.selection && !this.cap);
   }
-  hasDirty() { return Boolean(this.cap && (this.editor.hasDirty(this.cap.name, this.entry) || this.database?.hasDirty())); }
+  hasDirty() { return Boolean(this.cap && (this.editor.hasDirty(this.cap.name, this.entry) || this.database?.hasDirty() || this.office?.hasDirty())); }
+  async leaveOffice() {
+    const office = this.office;
+    if (office && !await office.prepareLeave()) return false;
+    if (this.office === office) { office?.destroy(); this.office = null; }
+    return true;
+  }
   async select(item) {
+    if (!await this.leaveOffice()) return false;
     const selected = ++this.selection;
     this.item = item;
     this.database?.destroy?.();
@@ -84,6 +92,7 @@ export class Workspace {
       controls.push(run);
     }
     const upload = button(cap.kind === "markdown" ? "上传附件" : "上传", () => this.onUpload(cap, this.entry), "button ghost");
+    upload.disabled = Boolean(this.office?.hasDirty());
     upload.prepend(icon("upload"));
     const history = button("历史", () => this.showHistory(), this.mode === "history" ? "button active ghost" : "button ghost");
     history.prepend(icon("history"));
@@ -102,6 +111,10 @@ export class Workspace {
     const cap = this.cap;
     const entry = this.entry;
     const isCurrent = () => selected === this.selection && request === this.viewRequest;
+    if (this.office) {
+      if (background) { this.office.refresh(cap); return; }
+      if (!await this.leaveOffice() || !isCurrent()) return;
+    }
     this.database?.destroy?.();
     this.database = null;
     if (this.mode === "history") {
@@ -140,15 +153,18 @@ export class Workspace {
       this.displayedCommit = cap.commit;
       return;
     }
-    if (["excel", "word"].includes(kind)) {
-      await officeView(this.content, cap, entry, isCurrent, this.onError, (context) => this.inspector.context(context), (saved) => {
-        this.saved(saved);
-        if (isCurrent()) this.refresh(true);
+    if (isOfficeFile(entry || cap.name)) {
+      this.office = new OfficeView(this.content, cap, entry, {
+        isCurrent,
+        onError: this.onError,
+        onSaved: (saved) => this.saved(saved),
+        onDirty: () => this.chrome(),
+        onReload: () => this.reopenOffice(),
       });
       if (isCurrent()) this.displayedCommit = cap.commit;
       return;
     }
-    if (kind === "file") {
+    if (["file", "word", "excel"].includes(kind)) {
       fileView(this.content, cap, entry);
       this.displayedCommit = cap.commit;
       return;
@@ -182,10 +198,22 @@ export class Workspace {
       } catch (error) { this.onError(error); }
     });
   }
-  openFile(entry) { this.entry = entry; this.mode = "content"; this.navigation?.selectEntry(entry); this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
-  showFiles() { this.entry = undefined; this.mode = "files"; this.navigation?.setMode("files"); this.inspector.context({ label: "文件集合", values: ["从第二列目录进入文件。"] }); this.chrome(); this.load(); }
-  showDatabase(table) { this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.navigation?.setMode("tables"); this.navigation?.selectTable(table); this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
-  showHistory() { this.mode = "history"; this.inspector.context({ label: "版本历史", values: ["此 cap 的内容与元数据提交。回撤会通过队列生成新版本。"] }); this.chrome(); this.load(); }
+  async openFile(entry) { if (!await this.leaveOffice()) return; this.entry = entry; this.mode = "content"; this.navigation?.selectEntry(entry); this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
+  async showFiles() { if (!await this.leaveOffice()) return; this.entry = undefined; this.mode = "files"; this.navigation?.setMode("files"); this.inspector.context({ label: "文件集合", values: ["从第二列目录进入文件。"] }); this.chrome(); this.load(); }
+  async showDatabase(table) { if (!await this.leaveOffice()) return; this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.navigation?.setMode("tables"); this.navigation?.selectTable(table); this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
+  async showHistory() { if (!await this.leaveOffice()) return; this.mode = "history"; this.inspector.context({ label: "版本历史", values: ["此 cap 的内容与元数据提交。回撤会通过队列生成新版本。"] }); this.chrome(); this.load(); }
+  async reopenOffice() {
+    if (!await this.leaveOffice()) return;
+    const selected = this.selection;
+    try {
+      const cap = await action("stat", { name: this.cap.name });
+      if (selected !== this.selection) return;
+      this.cap = cap;
+      this.inspector.show(cap);
+      this.chrome();
+      await this.load();
+    } catch (error) { this.onError(error); }
+  }
   showError(error) {
     replace(this.content, node("p", "error-message file-empty", error.message));
     this.onError(error);
@@ -196,6 +224,7 @@ export class Workspace {
     this.cap = cap;
     this.inspector.show(cap);
     this.navigation?.update(cap);
+    this.office?.refresh(cap);
     if (this.mode === "database") this.database?.refresh(cap);
     this.chrome();
     if (reload) this.refresh(true);
@@ -213,6 +242,7 @@ export class Workspace {
       this.inspector.show(cap);
       this.navigation?.update(cap);
       this.chrome();
+      if (this.office) { this.office.refresh(cap); return; }
       if (this.mode === "content" && this.hasDirty()) {
         if (changed) this.editor.markRemote(name, this.entry);
         return;

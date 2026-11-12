@@ -5,6 +5,7 @@ import { uiError } from "./errors.mjs";
 import { readTable, writeTable } from "../database/tables.mjs";
 import { writeOffice } from "../office/write.mjs";
 import { previewOffice } from "../preview/office.mjs";
+import { getOfficeSession, officeStatus, openOfficeSession, saveOfficeSession } from "../office/sessions.mjs";
 
 const allowed = {
   health: [],
@@ -14,6 +15,10 @@ const allowed = {
   entries: ["name", "limit", "offset"],
   read: ["name", "entry", "from", "limit"],
   preview: ["name", "entry"],
+  "office-status": [],
+  "office-open": ["name", "entry", "token"],
+  "office-session": ["id"],
+  "office-save": ["id"],
   "office-write": ["name", "entry", "changes", "token"],
   table: ["name", "table", "limit", "offset"],
   "table-write": ["name", "table", "changes", "token"],
@@ -57,6 +62,10 @@ export async function performAction(api, input) {
     throw uiError("请先读取当前版本再提交修改");
   const { action } = input;
   if (action === "health") return api.json("/api/health");
+  if (action === "office-status") return officeStatus(api);
+  if (action === "office-open") return openOfficeSession(api, value);
+  if (action === "office-session") return getOfficeSession(api, value.id);
+  if (action === "office-save") return saveOfficeSession(api, value.id);
   if (action === "list") return api.json(api.query("/api/capsules", value));
   if (action === "ls") return api.json(api.query("/api/mounts", value));
   if (action === "events") return api.json(api.query("/api/events", value));

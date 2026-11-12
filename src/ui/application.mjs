@@ -8,6 +8,7 @@ import { errorResult, json, requestJson, uiError } from "./errors.mjs";
 import { performAction } from "./actions.mjs";
 import { staticFile } from "./static.mjs";
 import { sendMedia, uploadMedia } from "./media.mjs";
+import { officeContentPolicy, sendOfficeRecovery } from "./office.mjs";
 
 export function createUiApplication({
   config,
@@ -23,12 +24,13 @@ export function createUiApplication({
   if (!Number.isSafeInteger(maxUploadBytes) || maxUploadBytes < 1)
     throw uiError("上传上限无效");
   const csrfToken = randomBytes(32).toString("hex");
+  const contentPolicy = officeContentPolicy(config);
   const server = createServer(async (request, response) => {
     try {
       const base = checkRequest(request, server.address().port);
       const url = new URL(request.url, base);
       if (url.pathname === "/ui/session" && request.method === "GET")
-        return json(response, 200, { csrfToken, serverUrl: config.serverUrl });
+        return json(response, 200, { csrfToken, serverUrl: config.serverUrl, officeEditorUrl: config.officeEditorUrl || "http://127.0.0.1:8081" });
       if (url.pathname === "/ui/action") {
         if (request.method !== "POST") throw uiError("该接口需要POST", 405);
         checkSession(request, csrfToken);
@@ -43,9 +45,13 @@ export function createUiApplication({
         if (request.method !== "GET") throw uiError("该接口需要GET", 405);
         return await sendMedia(request, response, url, api);
       }
+      if (url.pathname === "/ui/office/recovery") {
+        if (request.method !== "GET") throw uiError("该接口需要GET", 405);
+        return await sendOfficeRecovery(response, url, api);
+      }
       if (url.pathname.startsWith("/ui/")) throw uiError("接口不存在", 404);
       if (!["GET", "HEAD"].includes(request.method)) throw uiError("静态文件只接受读取", 405);
-      await staticFile(request, response, url.pathname, webRoot);
+      await staticFile(request, response, url.pathname, webRoot, contentPolicy);
     } catch (error) {
       if (response.headersSent || response.destroyed) {
         response.destroy(error);
