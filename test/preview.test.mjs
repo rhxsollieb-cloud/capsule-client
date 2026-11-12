@@ -40,7 +40,7 @@ test("Office 拒绝损坏ZIP、DTD、宏和外部工作表", async () => {
   }), "word"), { status: 415 });
   await assert.rejects(parseOffice(zipBuffer({
     "xl/workbook.xml": '<workbook xmlns:r="urn:rel"><sheets><sheet name="外部" r:id="r1"/></sheets></workbook>',
-    "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="r1" TargetMode="External" Target="https://example.invalid/sheet.xml"/></Relationships>',
+    "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" TargetMode="External" Target="https://example.invalid/sheet.xml"/></Relationships>',
   }), "excel"), /外部/);
 });
 
@@ -51,11 +51,13 @@ test("压缩XML膨胀、XML深度与行列边界明确限制", async () => {
   const nested = "<a>".repeat(limits.xmlDepth + 1) + "</a>".repeat(limits.xmlDepth + 1);
   await assert.rejects(parseOffice(zipBuffer({ "word/document.xml": nested }), "word"), { status: 413 });
   const result = await parseOffice(zipBuffer({
-    "xl/workbook.xml": '<workbook xmlns:r="urn:rel"><sheets><sheet name="边界" r:id="r1"/></sheets></workbook>',
-    "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="r1" Target="worksheets/sheet1.xml"/></Relationships>',
+    "xl/workbook.xml": '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet sheetId="1" name="边界" r:id="r1"/></sheets></workbook>',
+    "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
     "xl/worksheets/sheet1.xml": '<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="AE1"><v>31</v></c></row><row r="201"><c r="A201"><v>201</v></c></row></sheetData></worksheet>',
   }), "excel");
-  assert.deepEqual(result.sheets[0].rows, [["1"]]);
+  assert.equal(result.sheets[0].rows.length, limits.rows);
+  assert.equal(result.sheets[0].rows[0][0], "1");
+  assert.ok(result.sheets[0].rows.every((row) => row.length <= limits.columns));
   assert.equal(result.truncated, true);
   assert.equal(result.sheets[0].truncated, true);
 });

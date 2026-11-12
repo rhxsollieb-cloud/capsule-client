@@ -100,7 +100,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 window.addEventListener("beforeunload", (event) => {
-  const dirty = [...workspace.editor.drafts.values(), ...inspector.drafts.values()].some((draft) => draft.dirty);
+  const dirty = [...workspace.editor.drafts.values(), ...inspector.drafts.values(), ...workspace.databaseDrafts.values()].some((draft) => draft.dirty);
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 

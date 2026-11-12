@@ -10,7 +10,7 @@ export class Inspector {
     this.sections = new Map();
     this.onSaved = onSaved;
     this.onError = onError;
-    this.content = new InspectorContext({ onOpenEntry: (entry) => this.onOpenEntry?.(entry), onOpenTable: (table) => this.onOpenTable?.(table) });
+    this.content = new InspectorContext();
   }
   show(cap) {
     if (this.current?.name === cap.name) { this.update(cap); return; }
@@ -78,13 +78,11 @@ export class Inspector {
     this.runtime.append(section);
   }
   update(cap) {
-    const changed = this.current.commit !== cap.commit;
     this.current = cap;
     this.commit.textContent = shortCommit(cap.commit);
     this.commit.title = cap.commit;
     this.summary.textContent = cap.description || "暂无简介";
     this.updateRuntime(cap);
-    if (changed) this.content.loadNavigation(cap);
     if (!this.draft.dirty) {
       this.draft.value = cap.description || "";
       this.draft.original = cap.description || "";

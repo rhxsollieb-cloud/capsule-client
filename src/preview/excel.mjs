@@ -1,93 +1,49 @@
-import { posix } from "node:path";
-import { children, descendants, first, textContent, xmlDocument } from "./xml.mjs";
+import ExcelJS from "exceljs";
+import { compatibleExcelPreview } from "./excel-compat.mjs";
 import { limits, previewError, TextBudget } from "./limits.mjs";
 
-function columnIndex(reference) {
-  const match = /^([A-Z]+)[1-9]\d*$/.exec(reference || "");
-  if (!match || match[1].length > 3) return undefined;
-  let number = 0;
-  for (const letter of match[1]) number = number * 26 + letter.charCodeAt(0) - 64;
-  return number - 1;
+export function cellText(value) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value !== "object") return String(value);
+  if (Array.isArray(value.richText)) return value.richText.map((run) => run.text).join("");
+  if (value.formula !== undefined || value.sharedFormula !== undefined)
+    return value.result === undefined ? "=" + (value.formula || value.sharedFormula) : cellText(value.result);
+  if (value.error !== undefined) return value.error;
+  return value.text === undefined ? "" : String(value.text);
 }
 
-function cellValue(cell, strings) {
-  const type = cell.attributes.t;
-  const value = textContent(first(cell, "v"));
-  if (type === "s") {
-    if (!/^\d+$/.test(value) || Number(value) >= strings.length)
-      throw previewError("Excel 共享文本索引无效");
-    return strings[Number(value)];
+export async function loadWorkbook(buffer) {
+  try {
+    return await new ExcelJS.Workbook().xlsx.load(buffer);
+  } catch {
+    throw previewError("Excel 文件无法由 ExcelJS 读取");
   }
-  if (type === "inlineStr") return descendants(cell, "t").map(textContent).join("");
-  if (type === "b") return value === "1" ? "TRUE" : "FALSE";
-  const formula = first(cell, "f");
-  return value || (formula ? "=" + textContent(formula) : "");
 }
 
-function worksheet(source, strings, budget) {
-  const document = xmlDocument(source);
-  const data = descendants(document, "sheetData")[0];
-  if (!data) throw previewError("Excel 工作表缺少数据区域");
-  const rows = [];
-  let truncated = false;
-  let implicitRow = 0;
-  for (const row of children(data, "row")) {
-    const explicit = row.attributes.r;
-    if (explicit !== undefined && !/^[1-9]\d*$/.test(explicit))
-      throw previewError("Excel 行号无效");
-    const index = explicit === undefined ? implicitRow : Number(explicit) - 1;
-    implicitRow = index + 1;
-    if (index >= limits.rows || budget.remaining === 0) {
-      truncated = true;
-      continue;
-    }
-    while (rows.length <= index) rows.push([]);
-    let implicitColumn = 0;
-    for (const cell of children(row, "c")) {
-      const column = cell.attributes.r === undefined ? implicitColumn : columnIndex(cell.attributes.r);
-      if (column === undefined) throw previewError("Excel 单元格坐标无效");
-      implicitColumn = column + 1;
-      if (column >= limits.columns) {
-        truncated = true;
-        continue;
-      }
-      while (rows[index].length <= column) rows[index].push("");
-      rows[index][column] = budget.take(cellValue(cell, strings));
-    }
-  }
-  return { rows, truncated };
-}
-
-export function excelPreview(parts) {
-  const workbook = xmlDocument(parts.get("xl/workbook.xml"));
-  const relationships = xmlDocument(parts.get("xl/_rels/workbook.xml.rels"));
-  const targets = new Map(descendants(relationships, "Relationship").map((element) =>
-    [element.attributes.Id, element.attributes]));
-  const strings = parts.has("xl/sharedStrings.xml")
-    ? descendants(xmlDocument(parts.get("xl/sharedStrings.xml")), "si")
-      .map((element) => descendants(element, "t").map(textContent).join(""))
-    : [];
-  const allSheets = descendants(workbook, "sheet");
-  if (!allSheets.length) throw previewError("Excel 文件没有可预览工作表");
+export async function excelPreview(buffer) {
+  let workbook;
+  try { workbook = await loadWorkbook(buffer); }
+  catch { return compatibleExcelPreview(buffer); }
+  if (!workbook.worksheets.length) throw previewError("Excel 文件没有工作表");
   const budget = new TextBudget();
-  const sheets = allSheets.slice(0, limits.sheets).map((sheet) => {
-    const relationship = targets.get(sheet.attributes.id);
-    if (!relationship || relationship.TargetMode === "External")
-      throw previewError("Excel 工作表引用无效或指向外部内容");
-    const target = relationship.Target || "";
-    if (target.includes("\\") || /^[a-z]+:/i.test(target))
-      throw previewError("Excel 工作表路径无效");
-    const path = posix.normalize(target.startsWith("/") ? target.slice(1) : posix.join("xl", target));
-    if (!/^xl\/worksheets\/[^/]+\.xml$/.test(path))
-      throw previewError("Excel 工作表不在受支持的文件区");
-    return {
-      name: budget.take(sheet.attributes.name || "工作表"),
-      ...worksheet(parts.get(path), strings, budget),
-    };
+  const sheets = workbook.worksheets.slice(0, limits.sheets).map((worksheet) => {
+    const rows = [];
+    let truncated = worksheet.rowCount > limits.rows || worksheet.columnCount > limits.columns;
+    for (let index = 1; index <= Math.min(worksheet.rowCount, limits.rows); index++) {
+      if (budget.remaining === 0) { truncated = true; break; }
+      const row = worksheet.getRow(index);
+      const values = [];
+      for (let column = 1; column <= Math.min(row.cellCount, limits.columns); column++)
+        values.push(budget.take(cellText(row.getCell(column).value)));
+      rows.push(values);
+    }
+    return { name: budget.take(worksheet.name), rows, truncated };
   });
   return {
     kind: "excel",
     sheets,
-    truncated: allSheets.length > limits.sheets || budget.truncated || sheets.some((sheet) => sheet.truncated),
+    truncated: workbook.worksheets.length > limits.sheets || budget.truncated || sheets.some((sheet) => sheet.truncated),
   };
 }

@@ -1,7 +1,7 @@
 import globals from "globals";
 
 export default [
-  { ignores: [".local/**", "node_modules/**"] },
+  { ignores: [".local/**", "node_modules/**", "web/vendor/**"] },
   {
     files: ["src/**/*.mjs", "test/**/*.mjs", "scripts/**/*.mjs", "*.mjs"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: globals.node },
@@ -12,7 +12,7 @@ export default [
     },
   },
   {
-    files: ["web/**/*.mjs"],
+    files: ["web/**/*.mjs", "browser/**/*.mjs"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: globals.browser },
     rules: {
       "no-undef": "error",

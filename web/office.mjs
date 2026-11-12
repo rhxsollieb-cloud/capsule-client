@@ -1,6 +1,7 @@
 import { action } from "./api.mjs";
 import { button, node, replace, shortCommit } from "./dom.mjs";
 import { downloadButton } from "./views.mjs";
+import { editOffice } from "./office-edit.mjs";
 
 function columnName(index) {
   let value = "";
@@ -47,7 +48,7 @@ function documentPage(blocks) {
   return page;
 }
 
-export async function officeView(container, cap, entry, isCurrent, onError, onContext) {
+export async function officeView(container, cap, entry, isCurrent, onError, onContext, onSaved) {
   replace(container, node("p", "loading", "正在读取办公文件…"));
   try {
     const result = await action("preview", { name: cap.name, entry });
@@ -55,8 +56,14 @@ export async function officeView(container, cap, entry, isCurrent, onError, onCo
     if (result.commit !== cap.commit) throw new Error("文件在读取期间已有新版本，请刷新后查看。原有草稿会保留。");
     const wrapper = node("div", `office-view ${result.kind}-view`);
     const toolbar = node("div", "reading-toolbar");
-    toolbar.append(node("span", "content-eyebrow", result.kind === "excel" ? "SPREADSHEET" : "DOCUMENT"), node("span", "muted", `只读预览 · ${shortCommit(result.commit)}`), downloadButton(cap.name, entry));
+    const edit = button(result.kind === "excel" ? "修改单元格" : "填充模板", () => editOffice(cap, entry, result, onSaved, onError));
+    const hasTemplate = result.kind !== "word" || result.blocks.some((block) => /\{\{[^{}]+\}\}/.test(block.text || block.rows?.flat().join("\n") || ""));
+    edit.disabled = result.writeSupported === false || !hasTemplate;
+    if (!hasTemplate) edit.title = "文档中没有可填写的模板字段";
+    if (result.writeSupported === false) edit.title = "此工作簿可读取，当前写回库不支持其封装";
+    toolbar.append(node("span", "content-eyebrow", result.kind === "excel" ? "SPREADSHEET" : "DOCUMENT"), node("span", "muted", `原件预览 · ${shortCommit(result.commit)}`), edit, downloadButton(cap.name, entry));
     wrapper.append(toolbar);
+    if (result.writeSupported === false) wrapper.append(node("p", "range-notice", "当前支持读取此原件；修改请下载后编辑，再上传新版本。"));
     if (result.kind === "excel") {
       const content = node("div", "sheet-content");
       const tabs = node("div", "sheet-tabs");

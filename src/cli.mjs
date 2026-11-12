@@ -11,6 +11,8 @@ import { eventCommand } from "./commands/events.mjs";
 import { synchronize } from "./cache/sync.mjs";
 import { runCapsule } from "./runtime/run.mjs";
 import { doctor } from "./runtime/doctor.mjs";
+import { readTable } from "./database/tables.mjs";
+import { structuredWriteCommand } from "./commands/structured-write.mjs";
 import { previewOffice } from "./preview/office.mjs";
 
 export async function dispatch(args, api) {
@@ -19,6 +21,11 @@ export async function dispatch(args, api) {
       return api.json("/api/health");
     case "doctor":
       return doctor(api.config);
+    case "office-write":
+    case "table-write":
+      return structuredWriteCommand(api, args);
+    case "table":
+      return readTable(api, args.positional[0], { table: args.positional[1], ...args.values });
     case "preview":
       return previewOffice(api, args.positional[0], args.positional[1]);
     case "sync":

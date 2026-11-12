@@ -65,3 +65,12 @@ export function excelBuffer() {
     "xl/worksheets/sheet1.xml": '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>项目</t></is></c><c r="B1" t="inlineStr"><is><t>金额</t></is></c></row><row r="2"><c r="A2" t="s"><v>0</v></c><c r="B2"><v>1200</v></c><c r="C2"><f>B2*2</f><v>2400</v></c><c r="D2"><f>1+1</f></c></row></sheetData></worksheet>',
   });
 }
+
+export function prefixedExcelBuffer() {
+  return zipBuffer({
+    "[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>',
+    "xl/workbook.xml": '<x:workbook xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><x:sheets><x:sheet name="预算" sheetId="1" r:id="rId1"/></x:sheets></x:workbook>',
+    "xl/_rels/workbook.xml.rels": '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+    "xl/worksheets/sheet1.xml": '<x:worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:dimension ref="A1:B2"/><x:sheetData><x:row r="1"><x:c r="A1" t="inlineStr"><x:is><x:t>项目</x:t></x:is></x:c><x:c r="B1" t="inlineStr"><x:is><x:t>金额</x:t></x:is></x:c></x:row><x:row r="2"><x:c r="A2" t="inlineStr"><x:is><x:t>摄影</x:t></x:is></x:c><x:c r="B2"><x:v>1200</x:v></x:c></x:row></x:sheetData></x:worksheet>',
+  });
+}

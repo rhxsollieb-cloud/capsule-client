@@ -62,7 +62,7 @@
 .kind-image { --type-color: var(--image); }
 .kind-video { --type-color: var(--video); }
 .kind-audio { --type-color: var(--audio); }
-.kind-text { --type-color: var(--text-type); }
+.kind-text, .kind-markdown { --type-color: var(--text-type); }
 .kind-code, .kind-files { --type-color: var(--code-type); }
 .kind-database, .kind-word { --type-color: var(--database); }
 .kind-excel { --type-color: var(--image); }

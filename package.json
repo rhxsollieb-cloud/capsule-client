@@ -12,19 +12,34 @@
   },
   "scripts": {
     "start": "node src/cli.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "preui": "npm run build:web",
     "ui": "node src/ui/main.mjs",
+    "pretest": "npm run build:web",
     "test": "node --test --test-reporter=./test/quiet-reporter.mjs test/*.test.mjs",
     "check": "eslint ."
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "eslint": "10.14.0",
     "globals": "16.4.0"
   },
   "overrides": {
-    "minimatch": "11.0.1"
+    "minimatch": "11.0.1",
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   },
   "dependencies": {
+    "docx": "9.15.3",
+    "dompurify": "3.4.17",
+    "exceljs": "4.4.0",
+    "mammoth": "1.13.0",
+    "markdown-it": "15.0.3",
+    "parse5": "8.0.0",
     "saxes": "6.0.0",
+    "tabulator-tables": "6.7.1",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz",
     "yauzl": "3.4.0"
   }
 }

@@ -10,6 +10,7 @@ const paths = {
   capsule: "m12 3 9 5v8l-9 5-9-5V8l9-5ZM3 8l9 5 9-5M12 13v8",
   chevron: "m9 5 7 7-7 7",
   text: "M5 3h10l4 4v14H5V3ZM14 3v5h5M8 12h8M8 16h6",
+  markdown: "M3 5h18v14H3zM6 15V9l3 3 3-3v6M16 9v6m-2-2 2 2 2-2",
   file: "M5 3h10l4 4v14H5V3ZM14 3v5h5",
   files: "M3 6h7l2 2h9v12H3V6ZM3 6V4h7l2 2",
   code: "m8 6-6 6 6 6M16 6l6 6-6 6M14 3l-4 18",

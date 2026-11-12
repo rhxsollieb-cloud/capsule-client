@@ -2,6 +2,8 @@ import { capsuleName, entryPath } from "../system/paths.mjs";
 import { runCapsule } from "../runtime/run.mjs";
 import { synchronize } from "../cache/sync.mjs";
 import { uiError } from "./errors.mjs";
+import { readTable, writeTable } from "../database/tables.mjs";
+import { writeOffice } from "../office/write.mjs";
 import { previewOffice } from "../preview/office.mjs";
 
 const allowed = {
@@ -12,6 +14,9 @@ const allowed = {
   entries: ["name", "limit", "offset"],
   read: ["name", "entry", "from", "limit"],
   preview: ["name", "entry"],
+  "office-write": ["name", "entry", "changes", "token"],
+  table: ["name", "table", "limit", "offset"],
+  "table-write": ["name", "table", "changes", "token"],
   history: ["name", "limit", "offset"],
   events: ["status", "limit", "offset"],
   event: ["id"],
@@ -62,6 +67,9 @@ export async function performAction(api, input) {
   if (action === "create") return api.json("/api/capsules", "POST", value);
   if (action === "mount") return api.json("/api/mounts", "POST", value);
   if (action === "preview") return previewOffice(api, value.name, value.entry);
+  if (action === "office-write") return writeOffice(api, value.name, value);
+  if (action === "table") return readTable(api, value.name, value);
+  if (action === "table-write") return writeTable(api, value.name, value);
   const name = value.name;
   delete value.name;
   if (action === "stat") return api.json(api.path(name, "", value));

@@ -1,5 +1,6 @@
 import { action, upload } from "./api.mjs";
 import { button, directoryKinds, fileKind, formField, kindLabels, node, replace, shortCommit } from "./dom.mjs";
+import { capsuleEntry } from "./markdown-paths.mjs";
 
 export class Dialogs {
   constructor({ onCreated, onError, onRun, onRevert }) {
@@ -21,19 +22,24 @@ export class Dialogs {
   }
   show() { this.element.showModal(); }
   upload(cap, entry, onUploaded) {
-    const view = this.form("上传原件");
+    const markdown = cap.kind === "markdown";
+    const view = this.form(markdown ? "上传 Markdown 附件" : "上传原件");
     const file = node("input", "file-input");
     file.type = "file";
     file.required = true;
     const path = node("input", "property-input");
-    path.value = entry || "";
-    path.placeholder = cap.kind === "database" ? "media/文件名" : "相对文件路径";
+    path.value = markdown ? "" : entry || "";
+    path.required = directoryKinds.has(cap.kind);
+    path.placeholder = markdown ? "assets/文件名" : cap.kind === "database" ? "media/文件名" : "相对文件路径";
+    let automaticPath;
     file.addEventListener("change", () => {
-      if (path.value || !file.files[0]) return;
-      path.value = `${cap.kind === "database" ? "media/" : ""}${file.files[0].name}`;
+      if (!file.files[0] || path.value && path.value !== automaticPath) return;
+      automaticPath = `${markdown ? "assets/" : cap.kind === "database" ? "media/" : ""}${file.files[0].name}`;
+      path.value = automaticPath;
     });
     view.fields.append(node("strong", "", cap.name), formField("选择文件", file));
     if (directoryKinds.has(cap.kind)) view.fields.append(formField("目标相对路径", path));
+    if (markdown) view.fields.append(node("p", "property-note", "附件保存到 assets/。在正文使用 ![说明](assets/文件名) 嵌入图片、音频或视频。正文请通过编辑器保存。"));
     const submit = node("button", "button primary", "上传并保存版本");
     submit.type = "submit";
     view.actions.append(submit);
@@ -43,6 +49,7 @@ export class Dialogs {
       submit.disabled = true;
       submit.textContent = "正在上传…";
       try {
+        if (markdown && !capsuleEntry(path.value)?.startsWith("assets/")) throw new Error("Markdown 附件请保存到 assets/ 内，正文通过编辑器修改。");
         const saved = await upload(cap.name, directoryKinds.has(cap.kind) ? path.value : undefined, file.files[0], cap.token);
         this.element.close();
         onUploaded(saved);
@@ -67,6 +74,7 @@ export class Dialogs {
       option.value = value;
       kind.append(option);
     }
+    kind.value = "markdown";
     const description = node("textarea", "property-input");
     description.rows = 3;
     description.maxLength = 180;

@@ -1,6 +1,7 @@
 .local/
 .env
 node_modules/
+web/vendor/
 coverage/
 *.log
 .DS_Store

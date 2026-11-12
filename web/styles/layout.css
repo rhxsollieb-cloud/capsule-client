@@ -13,14 +13,21 @@
 .connection-dot { width: 7px; height: 7px; border: 1px solid var(--text); border-radius: 50%; background: var(--control); }
 .connected .connection-dot { background: var(--image); border-color: var(--image); }
 .disconnected .connection-dot { border-radius: 0; background: var(--error); border-color: var(--error); }
-.workspace { display: grid; grid-template-columns: 40px 246px minmax(0, 1fr) 270px; gap: 8px; min-height: 0; overflow: hidden; padding: 9px 10px 7px 7px; }
-.workspace:has(.inspector.hidden) { grid-template-columns: 40px 246px minmax(0, 1fr) 0; gap: 8px; }
+.workspace { display: grid; grid-template-areas: "activity library content inspector"; grid-template-columns: 40px 246px minmax(0, 1fr) 270px; gap: 8px; min-height: 0; overflow: hidden; padding: 9px 10px 7px 7px; }
+.workspace.has-native { grid-template-areas: "activity library native content inspector"; grid-template-columns: 40px 210px 212px minmax(0, 1fr) 250px; }
+.workspace:has(.inspector.hidden) { grid-template-areas: "activity library content"; grid-template-columns: 40px 246px minmax(0, 1fr); }
+.workspace.has-native:has(.inspector.hidden) { grid-template-areas: "activity library native content"; grid-template-columns: 40px 210px 212px minmax(0, 1fr); }
+.activity-bar { grid-area: activity; }
+.sidebar { grid-area: library; }
+.native-sidebar { grid-area: native; }
+.main-pane { grid-area: content; }
+.inspector { grid-area: inspector; }
 .activity-bar { display: flex; flex-direction: column; gap: 7px; padding: 5px 0; }
 .activity-button { display: grid; place-items: center; height: 38px; border: 1px solid transparent; border-radius: 5px; background: transparent; }
 .activity-button.active { border-color: var(--border); background: linear-gradient(var(--raised), var(--header)); box-shadow: 0 2px 0 var(--shadow), inset 0 1px var(--highlight); }
 .activity-button:hover { background: var(--hover); }
 .activity-spacer { flex: 1; }
-.sidebar, .main-pane, .inspector { min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); box-shadow: 0 3px 0 var(--shadow), inset 0 1px var(--highlight); overflow: hidden; }
+.sidebar, .main-pane, .inspector, .native-sidebar { min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); box-shadow: 0 3px 0 var(--shadow), inset 0 1px var(--highlight); overflow: hidden; }
 .sidebar { display: flex; flex-direction: column; }
 .sidebar-header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 11px 0 14px; background: linear-gradient(var(--raised), var(--header)); border-bottom: 1px solid var(--border); box-shadow: inset 0 1px var(--highlight); }
 .sidebar-header h2 { margin: 0; font-size: 12px; letter-spacing: .3px; }
@@ -66,14 +73,16 @@
 .statusbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .statusbar svg { width: 12px; height: 12px; }
 .status-button { border: 0; background: transparent; padding: 0 3px; font-size: 10px; }
-@media (max-width: 1250px) {
-  .workspace, .workspace:has(.inspector.hidden) { grid-template-columns: 38px 224px minmax(0, 1fr); }
+@media (max-width: 1450px) {
+  .workspace, .workspace:has(.inspector.hidden) { grid-template-areas: "activity library content"; grid-template-columns: 38px 224px minmax(0, 1fr); }
+  .workspace.has-native, .workspace.has-native:has(.inspector.hidden) { grid-template-areas: "activity library native content"; grid-template-columns: 38px 195px 198px minmax(0, 1fr); }
   .inspector { display: none; }
   .brand { min-width: 230px; }
   body.inspector-open .inspector { position: fixed; z-index: 8; display: block; width: 280px; top: 70px; right: 10px; bottom: 34px; box-shadow: -3px 3px 0 var(--shadow); }
 }
 @media (max-width: 850px) {
   .workspace, .workspace:has(.inspector.hidden) { grid-template-columns: 34px 185px minmax(0, 1fr); gap: 5px; padding: 7px 5px; }
+  .workspace.has-native, .workspace.has-native:has(.inspector.hidden) { grid-template-columns: 30px 150px 165px minmax(0, 1fr); }
   .brand { min-width: 170px; }
   .brand small, .theme-toggle, #status-server { display: none; }
   .topbar { gap: 9px; padding: 0 11px; }
@@ -83,6 +92,7 @@
 }
 @media (max-width: 640px) {
   .workspace, .workspace:has(.inspector.hidden) { grid-template-columns: 30px 150px minmax(0, 1fr); }
+  .workspace.has-native, .workspace.has-native:has(.inspector.hidden) { grid-template-columns: 28px 138px 150px minmax(260px, 1fr); overflow-x: auto; }
   .brand { min-width: auto; }
   .brand strong { display: none; }
   .content-header { padding: 6px; }

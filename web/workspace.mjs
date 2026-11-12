@@ -2,11 +2,11 @@ import { action, readText } from "./api.mjs";
 import { button, directoryKinds, fileKind, kindLabels, node, replace, shortCommit } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 import { TextEditor } from "./editor.mjs";
-import { DatabaseView } from "./database.mjs";
 import { downloadButton, emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
 import { officeView } from "./office.mjs";
 import { overviewView } from "./overview.mjs";
 import { markdownOutline } from "./markdown.mjs";
+import { NativeNavigator } from "./native-navigation.mjs";
 
 export class Workspace {
   constructor({ inspector, onError, onChanged, onCreate, onRun, onUpload, onRevert }) {
@@ -14,26 +14,34 @@ export class Workspace {
     this.content = document.getElementById("content");
     this.selection = 0;
     this.viewRequest = 0;
+    this.databaseDrafts = new Map();
+    this.navigation = new NativeNavigator({
+      onOpenEntry: (entry) => this.openFile(entry),
+      onOpenTable: (table) => this.showDatabase(table),
+      onError,
+    });
     this.editor = new TextEditor({
       onSaved: (cap, options) => this.saved(cap, options),
       onError,
       onDirty: () => this.chrome(),
+      onOpenEntry: (entry) => this.openFile(entry),
     });
     emptyView(this.content, onCreate);
-    this.inspector.onOpenEntry = (entry) => this.openFile(entry);
-    this.inspector.onOpenTable = (table) => this.showDatabase(table);
   }
   async home(onOpen) {
     if (this.cap) return;
     const selected = this.selection;
     await overviewView(this.content, onOpen, this.onCreate, () => selected === this.selection && !this.cap);
   }
-  hasDirty() { return this.cap && this.editor.hasDirty(this.cap.name, this.entry); }
+  hasDirty() { return Boolean(this.cap && (this.editor.hasDirty(this.cap.name, this.entry) || this.database?.hasDirty())); }
   async select(item) {
     const selected = ++this.selection;
     this.item = item;
+    this.database?.destroy?.();
+    this.database = null;
     this.cap = null;
     this.entry = undefined;
+    this.navigation.hide();
     replace(this.content, node("p", "loading", "正在读取 cap…"));
     try {
       const cap = await action("stat", { name: item.name });
@@ -42,7 +50,9 @@ export class Workspace {
       this.databaseTable = undefined;
       this.inspector.show(cap);
       this.inspector.context({ label: "当前 cap", values: [cap.name] });
-      this.mode = cap.kind === "database" ? "database" : directoryKinds.has(cap.kind) ? "files" : "content";
+      this.navigation.show(cap);
+      this.entry = cap.kind === "markdown" ? "README.md" : undefined;
+      this.mode = cap.kind === "database" ? "database" : cap.kind === "markdown" ? "content" : directoryKinds.has(cap.kind) ? "files" : "content";
       this.chrome();
       await this.load();
     } catch (error) {
@@ -63,7 +73,8 @@ export class Workspace {
     document.getElementById("status-context").textContent = `${kindLabels[cap.kind]} · ${shortCommit(cap.commit)}${this.hasDirty() ? " · 未保存" : ""}`;
     const actions = document.getElementById("content-actions");
     const controls = [];
-    if (directoryKinds.has(cap.kind)) controls.push(button("文件", () => this.showFiles(), this.mode === "files" ? "button active ghost" : "button ghost"));
+    if (directoryKinds.has(cap.kind)) controls.push(button("文件概览", () => this.showFiles(), this.mode === "files" ? "button active ghost" : "button ghost"));
+    if (cap.kind === "markdown") controls.push(button("正文", () => this.openFile("README.md"), this.entry === "README.md" && this.mode === "content" ? "button active ghost" : "button ghost"));
     if (cap.kind === "database") controls.push(button("数据", () => this.showDatabase(), this.mode === "database" ? "button active ghost" : "button ghost"));
     if (cap.kind === "code") {
       const run = button("运行", () => this.onRun(cap, this.hasDirty()), "button ghost");
@@ -72,7 +83,7 @@ export class Workspace {
       run.title = cap.runtime ? "同步服务端版本后本地运行" : "此 cap 尚未配置运行入口";
       controls.push(run);
     }
-    const upload = button("上传", () => this.onUpload(cap, this.entry), "button ghost");
+    const upload = button(cap.kind === "markdown" ? "上传附件" : "上传", () => this.onUpload(cap, this.entry), "button ghost");
     upload.prepend(icon("upload"));
     const history = button("历史", () => this.showHistory(), this.mode === "history" ? "button active ghost" : "button ghost");
     history.prepend(icon("history"));
@@ -91,13 +102,24 @@ export class Workspace {
     const cap = this.cap;
     const entry = this.entry;
     const isCurrent = () => selected === this.selection && request === this.viewRequest;
+    this.database?.destroy?.();
     this.database = null;
     if (this.mode === "history") {
       await historyView(this.content, cap, isCurrent, (target) => this.onRevert(this.cap, target, this.hasDirty()), this.onError);
       return;
     }
     if (this.mode === "database") {
-      this.database = new DatabaseView(this.content, cap, { isCurrent, onError: this.onError, table: this.databaseTable });
+      const { DatabaseView } = await import("./database.mjs");
+      if (!isCurrent()) return;
+      this.database = new DatabaseView(this.content, cap, {
+        isCurrent,
+        onError: this.onError,
+        table: this.databaseTable,
+        drafts: this.databaseDrafts,
+        onDirty: () => this.chrome(),
+        onTableSelected: (table) => { this.databaseTable = table; this.navigation?.selectTable(table); },
+        onSaved: (saved) => this.saved(saved),
+      });
       if (isCurrent()) this.displayedCommit = cap.commit;
       return;
     }
@@ -119,7 +141,10 @@ export class Workspace {
       return;
     }
     if (["excel", "word"].includes(kind)) {
-      await officeView(this.content, cap, entry, isCurrent, this.onError, (context) => this.inspector.context(context));
+      await officeView(this.content, cap, entry, isCurrent, this.onError, (context) => this.inspector.context(context), (saved) => {
+        this.saved(saved);
+        if (isCurrent()) this.refresh(true);
+      });
       if (isCurrent()) this.displayedCommit = cap.commit;
       return;
     }
@@ -157,9 +182,9 @@ export class Workspace {
       } catch (error) { this.onError(error); }
     });
   }
-  openFile(entry) { this.entry = entry; this.mode = "content"; this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
-  showFiles() { this.entry = undefined; this.mode = "files"; this.inspector.context({ label: "文件集合", values: ["从中央列表或侧边原生文件导航进入。"] }); this.chrome(); this.load(); }
-  showDatabase(table) { this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
+  openFile(entry) { this.entry = entry; this.mode = "content"; this.navigation?.selectEntry(entry); this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
+  showFiles() { this.entry = undefined; this.mode = "files"; this.navigation?.setMode("files"); this.inspector.context({ label: "文件集合", values: ["从第二列目录进入文件。"] }); this.chrome(); this.load(); }
+  showDatabase(table) { this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.navigation?.setMode("tables"); this.navigation?.selectTable(table); this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
   showHistory() { this.mode = "history"; this.inspector.context({ label: "版本历史", values: ["此 cap 的内容与元数据提交。回撤会通过队列生成新版本。"] }); this.chrome(); this.load(); }
   showError(error) {
     replace(this.content, node("p", "error-message file-empty", error.message));
@@ -170,6 +195,8 @@ export class Workspace {
     if (this.cap?.name !== cap.name) return;
     this.cap = cap;
     this.inspector.show(cap);
+    this.navigation?.update(cap);
+    if (this.mode === "database") this.database?.refresh(cap);
     this.chrome();
     if (reload) this.refresh(true);
   }
@@ -184,6 +211,7 @@ export class Workspace {
       const changed = cap.commit !== this.cap.commit;
       this.cap = cap;
       this.inspector.show(cap);
+      this.navigation?.update(cap);
       this.chrome();
       if (this.mode === "content" && this.hasDirty()) {
         if (changed) this.editor.markRemote(name, this.entry);

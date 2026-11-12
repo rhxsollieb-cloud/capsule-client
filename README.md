@@ -33,13 +33,15 @@ npm run ui
 
 默认打开地址为`http://127.0.0.1:5183`，CAPSULE_UI_PORT可修改界面端口。界面通过本地回环服务调用现有客户端模块，服务端认证值保存在本地进程。浏览器的会话校验和同源检查保护写入、上传及工具运行入口。
 
-工作台沿用VideoSeed的硬塑料视觉风格，支持亮色和深色主题。左侧组织虚拟路径与类别，中间按类型提供Markdown阅读、代码编辑、媒体播放、Word/Excel只读预览及SQLite表浏览，右侧显示内容上下文和可折叠属性。版本与回撤事件在底部查看。
+工作台沿用VideoSeed的硬塑料视觉风格，支持亮色和深色主题。知识库占第一列；选中目录cap后，第二列展开其原生文件，数据库可切换数据表与文件。中央按类型阅读、编辑和播放内容，最右侧显示上下文与可折叠属性。版本与回撤事件在底部查看。
 
-媒体和办公文件从真实原件读取，工具运行由用户明确点击。界面和CLI的写入核对同一版本token，后台刷新保留未提交草稿。Office预览也可由Agent通过preview命令读取。
+Markdown目录保存README.md和assets/附件，使用markdown-it与DOMPurify呈现同cap内的图片、音频和视频。新建默认为Markdown，普通text继续单文件保存。
 
-开发示例通过独立脚本种入，包含十个内容节点。样例来源、生成方式及重复执行规则见[开发示例](docs/demo-data.md)。
+Office使用ExcelJS、Mammoth和docx处理原件，SheetJS补充兼容读取，支持Excel单元格修改及Word模板填写；写回库不支持的原件会明确只读。数据库使用Tabulator网格与服务端官方SQLite驱动，支持保留草稿的单元格编辑。界面和CLI复用读写模块，提交核对原token，后台刷新保留未提交修改。具体边界见[Office适配](docs/office.md)与[数据库表格](docs/database.md)。
 
-图形入口与浏览器模块分别位于src/ui/和web/，无需额外构建。接口边界见[图形客户端说明](docs/ui.md)。
+开发示例通过独立脚本种入，基础十个节点加目录Markdown、Word模板和可修改预算三个扩展示例。样例来源、生成方式及重复执行规则见[开发示例](docs/demo-data.md)。
+
+图形入口与浏览器模块分别位于src/ui/和web/。npm run ui自动构建本机依赖包，浏览器不请求CDN；也可单独执行npm run build:web。构建源码在browser/，生成的web/vendor/不纳入Git。接口边界见[图形客户端说明](docs/ui.md)。
 
 ## Agent入口
 
@@ -108,7 +110,7 @@ node src/cli.mjs get 产品说明.txt ./下载说明.txt
 node src/cli.mjs update 产品说明.txt --description 修订说明 --token CURRENT_TOKEN
 ```
 
-单文件直接位于服务端capsules/。files、database、code使用独立目录，其内容直接从原生根寻址。code的update可设置--engine node与--entry，元数据修改会形成新提交。
+单文件直接位于服务端capsules/。files、database、code、markdown使用独立目录。markdown默认正文README.md，附件位于assets/；其他目录的默认正文仍为说明.md。code的update可设置--engine node与--entry，元数据修改会形成新提交。已有text不自动转换，创建Markdown目录请指定--kind markdown。
 
 ## 排队回撤
 
@@ -165,6 +167,6 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 ## 当前边界
 
-当前提供CLI和图形工作台、按类别的统一读写和SQLite查询、独立缓存及Node内置模块脚本运行。docx/xlsx支持受限的文本与单元格预览，保留原件下载，不还原完整办公排版、不计算公式。带第三方依赖的工具会给出环境诊断。Python运行环境和工具依赖安装继续按需求扩展。
+当前提供CLI和图形工作台、按类别的统一读写和SQLite查询、独立缓存及Node内置模块脚本运行。Office提供受限预览、Excel单元格修改和Word模板填写，保留原件下载，不保证复杂办公原件的完整排版保真，也不执行公式。数据库网格编辑限有完整非NULL主键的业务表，SQL查询结果只读。带第三方依赖的工具会给出环境诊断。Python运行环境和工具依赖安装继续按需求扩展。
 
 异常终止留下的缓存锁会明确给出位置。先停止使用同一缓存的客户端进程，核对原持有者已退出，再移除该锁文件重试。脏缓存中的修改需要先保留并核对。

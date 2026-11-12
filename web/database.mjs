@@ -1,130 +1,172 @@
 import { action } from "./api.mjs";
 import { button, node, replace, shortCommit } from "./dom.mjs";
-
-function cellValue(value) {
-  if (value === null) return "NULL";
-  if (value?.type === "bigint") return value.value;
-  if (value?.type === "blob") return `[BLOB · ${Math.floor(value.base64.length * 3 / 4)} B]`;
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
+import { createDataGrid } from "./data-grid.mjs";
+import { createDraft, draftKey, editCell, editableCell } from "./database-drafts.mjs";
 
 export class DatabaseView {
-  constructor(container, cap, { isCurrent, onError, table }) {
-    Object.assign(this, { container, cap, isCurrent, onError });
+  constructor(container, cap, { isCurrent, onError, table, drafts = new Map(), onDirty, onSaved, onTableSelected }) {
+    Object.assign(this, { container, cap, isCurrent, onError, drafts, onDirty, onSaved, onTableSelected });
     this.wrapper = node("div", "query-panel");
     const heading = node("div", "database-heading");
-    heading.append(node("span", "content-eyebrow", "SQLITE DATABASE"), node("h1", "", cap.name), node("p", "", cap.description || "以数据表浏览记录，使用只读 SQL 渐进查询。"));
-    this.tables = node("div", "database-tables");
-    this.input = node("textarea", "sql-editor");
-    this.input.value = "SELECT name, type FROM sqlite_schema\nWHERE name NOT LIKE 'sqlite_%'\nORDER BY name";
-    this.input.spellcheck = false;
-    this.input.setAttribute("aria-label", "SQLite 查询语句");
+    heading.append(node("span", "content-eyebrow", "SQLITE DATABASE"), node("h1", "", cap.name));
+    this.title = node("span", "database-table-title", "读取数据表…");
+    this.note = node("span", "database-note");
+    this.save = button("保存修改", () => this.saveChanges(), "button primary");
+    this.discard = button("放弃当前表修改", () => this.discardChanges(), "button ghost");
     this.toolbar = node("div", "query-toolbar");
-    this.note = node("span", "muted", "只读查询 · 每页 50 行");
-    this.execute = button("执行查询", () => this.query(0), "button primary");
-    this.toolbar.append(this.note, this.execute);
-    this.results = node("div", "query-results");
+    this.toolbar.append(this.title, this.note, this.discard, this.save);
+    this.input = node("textarea", "sql-editor");
+    this.input.spellcheck = false;
+    this.input.setAttribute("aria-label", "SQLite只读查询");
+    this.execute = button("执行查询", () => this.query(0), "button secondary");
     const sql = node("details", "sql-disclosure");
-    sql.append(node("summary", "", "SQL 查询 · ⌘ / Ctrl + Enter 执行"), this.input);
-    this.wrapper.append(heading, this.tables, sql, this.toolbar, this.results);
+    sql.append(node("summary", "", "SQL只读查询"), this.input, this.execute);
+    this.results = node("div", "query-results database-results");
+    const hint = node("p", "grid-hint", "双击业务表单元格编辑，点击保存统一提交。排序和筛选作用于当前页。");
+    this.wrapper.append(heading, this.toolbar, sql, hint, this.results);
     replace(container, this.wrapper);
-    this.input.addEventListener("input", () => {
-      this.note.textContent = this.input.value === this.lastSql ? `结果基于 ${shortCommit(this.resultCommit)}` : "查询语句已修改，执行后更新结果";
-      if (this.next) this.next.disabled = this.input.value !== this.lastSql;
-    });
     this.input.addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-        event.preventDefault();
-        this.query(0);
-      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); this.query(0); }
     });
-    this.initialize(table);
+    this.loadTable(table);
   }
-  async initialize(selectedTable) {
+  hasDirty() { return Boolean(this.draft?.dirty); }
+  destroy() { this.grid?.destroy(); this.grid = null; }
+  finishRequest() {
+    this.busy = false;
+    if (!this.isCurrent()) return;
+    this.controls();
+    const pending = this.pendingRefresh;
+    this.pendingRefresh = null;
+    if (pending && pending.commit !== this.record?.commit) this.refresh(pending);
+  }
+  controls() {
+    this.save.disabled = this.busy || this.draft?.saving || !this.hasDirty();
+    this.discard.disabled = this.busy || this.draft?.saving || !this.hasDirty();
+    this.execute.disabled = Boolean(this.busy);
+    this.note.textContent = this.hasDirty()
+      ? `${this.draft.saving ? "正在保存" : `${this.draft.changes.size} 行未保存`} · 基于 ${shortCommit(this.draft.record.commit)}${this.remote ? " · 服务端已有新版本" : ""}`
+      : this.record ? `${shortCommit(this.record.commit)} · ${this.record.editable ? "可编辑" : "只读"}` : "";
+  }
+  async loadTable(table, offset = 0) {
+    if (this.busy) return;
+    this.busy = true;
+    this.controls();
     try {
-      const schema = await action("query", { name: this.cap.name, sql: "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name", limit: 50 });
+      const record = await action("table", { name: this.cap.name, table, limit: 50, offset });
       if (!this.isCurrent()) return;
-      const names = schema.items.map((item) => item.name);
-      const controls = [];
-      this.tableButtons = controls;
-      const choose = (name) => {
-        if (this.busy) return;
-        this.input.value = `SELECT * FROM "${name.replaceAll('"', '""')}"`;
-        controls.forEach((item) => item.button.classList.toggle("active", item.name === name));
-        this.query(0);
-      };
-      for (const name of names) {
-        const control = button(name, () => choose(name), "button ghost");
-        controls.push({ name, button: control });
-        this.tables.append(control);
-      }
-      const first = names.includes(selectedTable) ? selectedTable : names.find((name) => !name.startsWith("_") && name !== "cap_run_logs") || names[0];
-      if (first) choose(first);
-      else this.query(0);
-    } catch (error) {
-      if (this.isCurrent()) replace(this.results, node("p", "error-message", error.message));
-      this.onError(error);
-    }
+      this.record = record;
+      this.mode = "table";
+      this.table = record.table;
+      this.offset = offset;
+      this.onTableSelected?.(record.table);
+      this.title.textContent = record.table || "暂无数据表";
+      this.input.value = record.table ? `SELECT * FROM "${record.table.replaceAll('"', '""')}"` : "SELECT name FROM sqlite_schema";
+      const key = draftKey(this.cap.name, record.table);
+      const previous = this.drafts.get(key);
+      this.draft = previous?.dirty ? previous : createDraft(record, offset);
+      this.offset = this.draft.offset;
+      this.drafts.set(key, this.draft);
+      this.remote = this.draft.record.token !== record.token;
+      this.render(this.draft.record, this.draft.rows, Boolean(record.table));
+      const draft = this.draft;
+      if (draft.saving) draft.completion.then(() => {
+        if (!this.isCurrent() || this.draft !== draft) return;
+        this.controls();
+        if (!draft.dirty) this.loadTable(this.table, this.offset);
+      });
+    } catch (error) { if (this.isCurrent()) this.fail(error); }
+    finally { this.finishRequest(); }
+  }
+  render(record, rows, editing = false) {
+    this.destroy();
+    const host = node("div", "database-grid");
+    const footer = node("div", "query-pagination");
+    const previous = button("上一页", () => editing ? this.page(Math.max(0, this.offset - 50)) : this.query(Math.max(0, this.offset - 50)));
+    previous.disabled = this.offset === 0;
+    const next = button("下一页", () => editing ? this.page(record.nextOffset) : this.query(record.nextOffset));
+    next.disabled = record.nextOffset === null || record.nextOffset === undefined;
+    footer.append(node("span", "", `${rows.length} 行 · 每页50行`), previous, next);
+    replace(this.results, host, footer);
+    this.grid = createDataGrid(host, {
+      columns: record.columns,
+      rows,
+      editable: (index, name) => !this.busy && editing && editableCell(this.draft, index, name),
+      onEdit: editing ? (index, name, value) => {
+        editCell(this.draft, index, name, value);
+        this.controls();
+        this.onDirty?.();
+        return Object.hasOwn(this.draft.changes.get(index)?.values || {}, name);
+      } : undefined,
+    });
+  }
+  page(offset) {
+    if (this.hasDirty()) { this.note.textContent = "当前页有未保存修改，请先保存或放弃后翻页。"; return; }
+    this.loadTable(this.table, offset);
   }
   async query(offset) {
     if (this.busy) return;
-    const sql = this.input.value;
-    if (!sql.trim()) return;
+    if (this.hasDirty()) { this.note.textContent = "当前表有未保存修改，请先保存或放弃后查询。"; return; }
     this.busy = true;
-    this.execute.disabled = true;
-    this.tableButtons?.forEach((item) => { item.button.disabled = true; });
-    this.note.textContent = "正在查询…";
+    this.controls();
+    const sql = this.input.value;
+    if (offset && sql !== this.lastSql) offset = 0;
     try {
       const result = await action("query", { name: this.cap.name, sql, limit: 50, offset });
       if (!this.isCurrent()) return;
+      this.record = { ...result, editable: false };
+      this.mode = "query";
       this.lastSql = sql;
-      this.resultCommit = result.commit;
-      this.note.textContent = this.input.value === sql ? `${result.items.length} 行 · ${shortCommit(result.commit)}` : "查询语句已修改，当前结果基于上次执行";
-      this.render(result, offset);
+      this.offset = offset;
+      this.title.textContent = "SQL查询结果";
+      this.render(result, result.items);
+    } catch (error) { if (this.isCurrent()) this.fail(error); }
+    finally { this.finishRequest(); }
+  }
+  async saveChanges() {
+    if (this.busy || this.draft?.saving || !this.hasDirty()) return;
+    this.busy = true;
+    this.controls();
+    const draft = this.draft;
+    draft.saving = true;
+    let reload = false;
+    let finished;
+    draft.completion = new Promise((resolve) => { finished = resolve; });
+    try {
+      const saved = await action("table-write", { name: this.cap.name, table: draft.record.table, changes: [...draft.changes.values()], token: draft.record.token });
+      draft.dirty = false;
+      draft.changes.clear();
+      this.drafts.delete(draftKey(this.cap.name, draft.record.table));
+      this.onSaved?.(saved);
+      this.onDirty?.();
+      if (!this.isCurrent()) return;
+      this.cap = saved;
+      reload = true;
     } catch (error) {
-      if (this.isCurrent()) {
-        this.note.textContent = "查询失败";
-        replace(this.results, node("p", "error-message file-empty", error.message));
-      }
+      if (this.isCurrent()) this.note.textContent = `${error.status === 409 ? "版本冲突" : "保存失败"} · 修改已保留`;
       this.onError(error);
     } finally {
-      this.busy = false;
-      this.execute.disabled = false;
-      this.tableButtons?.forEach((item) => { item.button.disabled = false; });
+      draft.saving = false;
+      finished();
+      this.finishRequest();
     }
+    if (reload && this.isCurrent() && !this.busy) await this.loadTable(this.table, this.offset);
   }
-  render(result, offset) {
-    const scroll = node("div", "table-scroll");
-    const table = node("table", "data-table");
-    const head = node("thead");
-    const row = node("tr");
-    for (const column of result.columns) row.append(node("th", "", column));
-    head.append(row);
-    const body = node("tbody");
-    for (const item of result.items) {
-      const tr = node("tr");
-      for (const column of result.columns) {
-        const value = cellValue(item[column]);
-        const td = node("td", item[column] === null ? "muted" : "", value);
-        td.title = value;
-        tr.append(td);
-      }
-      body.append(tr);
-    }
-    table.append(head, body);
-    scroll.append(table);
-    const footer = node("div", "query-pagination");
-    const previous = button("上一页", () => this.query(Math.max(0, offset - 50)));
-    previous.disabled = offset === 0;
-    this.next = button("下一页", () => this.query(result.nextOffset));
-    this.next.disabled = result.nextOffset === null || result.nextOffset === undefined || this.input.value !== this.lastSql;
-    footer.append(node("span", "muted", result.items.length ? `第 ${offset + 1}—${offset + result.items.length} 行` : "没有匹配结果"), previous, this.next);
-    replace(this.results, scroll, footer);
+  discardChanges() {
+    if (this.busy || this.draft?.saving || !this.draft) return;
+    this.drafts.delete(draftKey(this.cap.name, this.draft.record.table));
+    this.draft = null;
+    this.onDirty?.();
+    this.loadTable(this.table, this.offset);
   }
   refresh(cap) {
     this.cap = cap;
-    if (this.input.value === this.lastSql) this.query(0);
-    else this.note.textContent = "数据库已有新版本，执行查询后查看最新结果";
+    if (this.busy) { this.pendingRefresh = cap; return; }
+    if (this.hasDirty()) { this.remote = cap.token !== this.draft.record.token; this.controls(); }
+    else if (this.mode === "query") {
+      if (this.input.value === this.lastSql) this.query(0);
+      else this.note.textContent = "数据库已有新版本，执行查询后查看最新结果。";
+    } else this.loadTable(this.table, this.offset);
   }
+  fail(error) { this.note.textContent = error.message; this.onError(error); }
 }

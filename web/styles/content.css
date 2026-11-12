@@ -30,6 +30,14 @@
 .markdown-body p { margin: 12px 0; white-space: pre-line; }
 .markdown-body a { text-decoration: underline; text-underline-offset: 3px; }
 .markdown-body code { padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--control); font-family: var(--code); font-size: .88em; }
+.markdown-body pre { margin: 18px 0; padding: 15px 17px; border: 1px solid var(--border); border-radius: 4px; background: var(--control); overflow: auto; }
+.markdown-body pre code { display: block; border: 0; padding: 0; font-size: 11px; line-height: 1.8; white-space: pre; }
+.markdown-media-frame { display: block; margin: 22px 0; }
+.markdown-media { display: block; max-width: 100%; margin: 0 auto; border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 2px 0 var(--shadow); }
+.markdown-image, .markdown-video { max-height: 54vh; object-fit: contain; }
+.markdown-audio { width: min(100%, 480px); }
+.markdown-media-caption { display: block; margin-top: 7px; text-align: center; font-size: 10px; line-height: 1.6; }
+.markdown-attachment { display: inline-block; padding: 5px 8px; border: 1px dashed var(--border); font-size: 11px; }
 .markdown-body ul, .markdown-body ol { padding-left: 22px; }
 .markdown-body li { margin: 5px 0; }
 .markdown-body blockquote { margin: 20px 0; padding: 10px 15px; border-left: 3px solid var(--text-type); background: var(--stripe); font-size: 12px; }
@@ -118,6 +126,8 @@
 .sheet-table thead th { text-align: center; font-size: 10px; }
 .sheet-table tbody tr:first-child td { background: var(--header); font-weight: 650; }
 .sheet-tabs { display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 5px 14px; border-top: 1px solid var(--border); background: var(--stripe); }
+.template-field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.office-edit-dialog .dialog-fields { max-height: 65vh; overflow: auto; }
 @media (max-width: 1000px) {
   .library-overview { padding: 24px 20px; }
   .reading-surface { padding: 20px; }

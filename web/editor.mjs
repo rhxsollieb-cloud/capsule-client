@@ -4,11 +4,12 @@ import { icon } from "./icons.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 
 export class TextEditor {
-  constructor({ onSaved, onError, onDirty }) {
+  constructor({ onSaved, onError, onDirty, onOpenEntry }) {
     this.drafts = new Map();
     this.onSaved = onSaved;
     this.onError = onError;
     this.onDirty = onDirty;
+    this.onOpenEntry = onOpenEntry;
   }
   key(name, entry) { return `${name}\0${entry ?? ""}`; }
   hasDirty(name, entry) { return Boolean(this.drafts.get(this.key(name, entry))?.dirty); }
@@ -20,7 +21,7 @@ export class TextEditor {
       this.drafts.set(key, draft);
     }
     const page = node("div", "editor-page");
-    const markdown = /\.md$/i.test(entry || cap.name);
+    const markdown = cap.kind === "markdown" && !entry || /\.md$/i.test(entry || cap.name);
     const toolbar = node("div", "reading-toolbar");
     const reading = node("div", "reading-surface");
     let mode = markdown && !draft.dirty ? "read" : "edit";
@@ -52,7 +53,11 @@ export class TextEditor {
       reading.classList.toggle("hidden", mode !== "read");
       readButton.classList.toggle("active", mode === "read");
       editButton.classList.toggle("active", mode === "edit");
-      if (mode === "read") replace(reading, renderMarkdown(draft.body));
+      if (mode === "read") replace(reading, renderMarkdown(draft.body, {
+        name: cap.kind === "markdown" || entry ? cap.name : undefined,
+        entry: entry || "README.md",
+        onOpenEntry: this.onOpenEntry,
+      }));
     };
     toolbar.append(node("span", "content-eyebrow", markdown ? "MARKDOWN" : (entry || cap.name).split(".").at(-1).toUpperCase()));
     if (markdown) toolbar.append(readButton, editButton);

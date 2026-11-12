@@ -1,5 +1,6 @@
 export const limits = Object.freeze({
   fileBytes: 16 * 1024 * 1024,
+  archiveBytes: 64 * 1024 * 1024,
   xmlBytes: 8 * 1024 * 1024,
   totalXmlBytes: 24 * 1024 * 1024,
   archiveEntries: 2000,

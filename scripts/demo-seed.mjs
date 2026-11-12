@@ -34,12 +34,12 @@ async function write(cap, entry, body) {
 async function seed() {
   for (const file of ["视觉参考.jpg", "提示音.wav", "演示片段.mp4", "报价预算.xlsx", "拍摄说明.docx"]) await access(fixture(file));
   await api.json("/api/health");
-  await create(rootName, "text", rootBody);
+  await create(rootName, "markdown", rootBody);
   // Never attach new children beneath a user-owned cap that happens to have this name.
   const root = await api.json(api.path(rootName));
   if (root.description !== demoDescription) throw new Error("同名根节点不是演示数据，未更改它或新增挂载。");
   await api.json("/api/mounts", "POST", { name: rootName, path: `/${rootName}` });
-  await create("产品简报.md", "text", briefBody);
+  await create("产品简报.md", "markdown", briefBody);
   for (const [name, kind] of [["视觉参考.jpg", "image"], ["提示音.wav", "audio"], ["演示片段.mp4", "video"], ["报价预算.xlsx", "excel"], ["拍摄说明.docx", "word"]])
     await create(name, kind, undefined, (cap) => api.upload(name, undefined, fixture(name), cap.token));
   await create("资料包", "files", "# 资料包\n\n开发样例。说明、表格和清单在这个 cap 的原生文件中独立保存。\n", async (cap) => {

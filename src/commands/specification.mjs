@@ -1,6 +1,6 @@
 export const kinds = [
   "text", "image", "audio", "video", "excel", "word", "file",
-  "files", "database", "code",
+  "files", "database", "code", "markdown",
 ];
 
 export const options = {
@@ -13,6 +13,9 @@ export const options = {
   entries: ["limit", "offset"],
   read: ["from", "limit"],
   preview: [],
+  "office-write": ["file", "token"],
+  table: ["limit", "offset"],
+  "table-write": ["file", "token"],
   query: ["sql", "params", "text", "entry", "limit", "offset"],
   write: ["sql", "params", "file", "entry", "body", "token"],
   get: [],
@@ -41,6 +44,9 @@ export const arity = {
   entries: [1, 1],
   read: [1, 2],
   preview: [1, 2],
+  "office-write": [1, 2],
+  table: [2, 2],
+  "table-write": [2, 2],
   query: [1, 1],
   write: [1, 1],
   get: [2, 3],
@@ -63,10 +69,12 @@ export function validateValues(command, values) {
   if (values.kind !== undefined && !kinds.includes(values.kind))
     throw new Error("类别需为 " + kinds.join("、"));
   if (
-    ["put", "remove-entry", "move", "unmount", "write", "update", "revert"].includes(command) &&
+    ["put", "remove-entry", "move", "unmount", "write", "update", "revert", "office-write", "table-write"].includes(command) &&
     !values.token
   )
     throw new Error("写入需要 --token，请先读取当前实体或位置版本");
+  if (["office-write", "table-write"].includes(command) && !values.file)
+    throw new Error("结构化写入需要 --file JSON修改文件");
   if (["create", "update"].includes(command)) {
     if (Boolean(values.engine) !== Boolean(values.entry))
       throw new Error("运行配置需同时提供 --engine 和 --entry");

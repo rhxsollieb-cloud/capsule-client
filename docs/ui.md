@@ -5,7 +5,7 @@
 
 ## 进程与边界
 
-服务端默认127.0.0.1:5184，客户端图形服务默认127.0.0.1:5183。npm run ui启动本地图形服务，web/包含HTML、CSS及原生浏览器ES模块。界面使用本地HTTP桥接访问ApiClient、同步和运行模块，后端规则与CLI共用。
+服务端默认127.0.0.1:5184，客户端图形服务默认127.0.0.1:5183。npm run ui先用esbuild构建browser/依赖入口，再启动本地图形服务。web/包含HTML、CSS及浏览器ES模块，web/vendor/为忽略的本机构建产物，不请求CDN。界面使用本地HTTP桥接访问ApiClient、同步和运行模块，后端规则与CLI共用。
 
 服务端地址和认证配置取自客户端环境变量。浏览器获得显示用serverUrl及当前图形会话csrfToken，服务端Bearer值保留在本地进程。图形服务仅回环监听并核对Host、Origin、会话头，页面资源使用同源CSP。
 
@@ -16,7 +16,7 @@
 - GET /ui/content?name=...&entry=...流式提供预览，支持Range。download=1下载原件。
 - PUT /ui/upload?name=...&entry=...接收原件字节，携If-Match与X-Capsule-Session；临时保存后通过统一客户端上传，失败清理暂存。
 
-action提供health/list/ls/stat/entries/read/preview/history/events/event/create/save/update/query/write/mount/revert/run/sync。save写文本；query按类型执行原生查询；preview复用客户端只读Office解析；revert返回入队事件由界面轮询；run仅在用户明确操作后执行。
+action提供health/list/ls/stat/entries/read/preview/office-write/table/table-write/history/events/event/create/save/update/query/write/mount/revert/run/sync。save写文本；query按类型执行原生查询；Office与表格读写复用客户端适配；revert返回入队事件由界面轮询；run仅在用户明确操作后执行。
 
 创建cap和新增挂载是两个明确请求。挂载失败时应说明cap已创建并能从全部cap找回，避免重试创建造成重复或名称冲突。
 
@@ -28,14 +28,14 @@ action提供health/list/ls/stat/entries/read/preview/history/events/event/create
 
 ## 内容与侧栏
 
-左侧负责虚拟知识结构及类别筛选，知识树在当前位置展开。中间负责当前内容的阅读、编辑或操作，右侧负责该内容的上下文和可折叠属性；版本与运行事件在底部面板查看。亮色与深色主题使用同一布局和类型色，不以模糊或低对比文字表达层级。
+左侧第一列负责虚拟知识结构及类别筛选，知识树在当前位置展开。选中目录cap后，其右侧第二列展开原生文件树，数据库还可切换数据表。中央负责当前内容的阅读、编辑或操作，最右侧负责该内容的上下文和可折叠属性，不重复内部文件导航；版本与运行事件在底部面板查看。亮色与深色主题使用同一布局和类型色，不以模糊或低对比文字表达层级。
 
-- 文本提供安全Markdown阅读和正文编辑，代码沿用带行号的文本编辑，并可浏览原生文件及显式运行。
+- Markdown cap固定README.md与assets/，使用markdown-it解析及DOMPurify清理，支持当前cap内的相对图片、音频和视频嵌入；raw HTML关闭，媒体不跨cap引用。上传默认进入assets/，正文通过编辑保存。普通text继续平铺；已有text不会自动转换。代码提供行号编辑，并可浏览原生文件及显式运行。
 - 图片使用独立预览画布，音频与视频使用原生媒体控制，不自动播放。
-- Word提取标题、段落与表格，Excel按工作表展示单元格。当前只读解析docx/xlsx，原排版、图表、嵌入对象及公式计算不属于预览能力；其他办公格式保留原件下载。
-- 文件集合显示自身原生条目，SQLite显示表浏览与分页查询结果。数据库媒体仍通过统一内容接口访问。
+- Word通过Mammoth提取标题、段落与表格，Excel通过ExcelJS按工作表展示单元格，SheetJS兼容部分ExcelJS不能解析的合法原件。兼容预览会明确只读，不重导出丢失样式。单元格修改与Word模板填写使用成熟库在原件上写回，保留原token；完整排版保真与公式执行不属于能力保证，见office.md。其他办公格式保留原件下载。
+- 文件集合显示自身原生条目，SQLite使用Tabulator显示表与分页查询结果，业务单元格可编辑后统一提交。无主键、系统表和自定义查询结果只读。数据库媒体仍通过统一内容接口访问，详见database.md。
 
-Office解析在客户端执行并限制原件大小、ZIP条目及展开XML大小，禁止DOCTYPE；内容只作为文本与单元格数据返回，不执行宏或外部资源。CLI preview使用同一解析模块。
+Office解析在客户端执行并限制原件大小、ZIP条目及展开XML大小，禁止DOCTYPE；内容只作为文本与单元格数据返回，不执行宏或外部资源。CLI preview/office-write使用同一适配。表格草稿保留原token，切表后仍可恢复；保存期间共享草稿锁定，不能通过切表再切回来覆盖待提交数据。
 
 ## 开发示例
 
