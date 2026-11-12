@@ -8,6 +8,7 @@
   "bin": { "capsule": "src/cli.mjs" },
   "scripts": {
     "start": "node src/cli.mjs",
+    "ui": "node src/ui/main.mjs",
     "test": "node --test --test-reporter=./test/quiet-reporter.mjs test/*.test.mjs",
     "check": "eslint ."
   },
