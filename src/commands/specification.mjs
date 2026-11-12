@@ -1,11 +1,15 @@
-export const kinds = ["text", "code", "database", "file", "media"];
+export const kinds = [
+  "text", "image", "audio", "video", "excel", "word", "file",
+  "files", "database", "code",
+];
 
 export const options = {
   health: [],
   list: ["query", "kind", "limit", "offset"],
   ls: ["limit", "offset"],
   create: ["description", "body", "kind", "engine", "entry"],
-  stat: [],
+  stat: ["commit"],
+  update: ["description", "engine", "entry", "token"],
   entries: ["limit", "offset"],
   read: ["from", "limit"],
   query: ["sql", "params", "text", "entry", "limit", "offset"],
@@ -18,6 +22,9 @@ export const options = {
   move: ["token"],
   unmount: ["token"],
   history: ["limit", "offset"],
+  revert: ["token", "timeout"],
+  event: [],
+  events: ["status", "limit", "offset"],
   sync: [],
   run: ["log-cap"],
   doctor: [],
@@ -29,18 +36,22 @@ export const arity = {
   ls: [0, 1],
   create: [1, 1],
   stat: [1, 1],
+  update: [1, 1],
   entries: [1, 1],
   read: [1, 2],
   query: [1, 1],
   write: [1, 1],
-  get: [3, 3],
-  put: [3, 3],
+  get: [2, 3],
+  put: [2, 3],
   "remove-entry": [2, 2],
   mount: [2, 2],
   position: [1, 1],
   move: [2, 2],
   unmount: [1, 1],
   history: [1, 1],
+  revert: [2, 2],
+  event: [1, 1],
+  events: [0, 0],
   sync: [1, 1],
   run: [1, 1],
   doctor: [0, 0],
@@ -48,12 +59,23 @@ export const arity = {
 
 export function validateValues(command, values) {
   if (values.kind !== undefined && !kinds.includes(values.kind))
-    throw new Error("类别需为 text、code、database、file 或 media");
+    throw new Error("类别需为 " + kinds.join("、"));
   if (
-    ["put", "remove-entry", "move", "unmount", "write"].includes(command) &&
+    ["put", "remove-entry", "move", "unmount", "write", "update", "revert"].includes(command) &&
     !values.token
   )
     throw new Error("写入需要 --token，请先读取当前实体或位置版本");
+  if (["create", "update"].includes(command)) {
+    if (Boolean(values.engine) !== Boolean(values.entry))
+      throw new Error("运行配置需同时提供 --engine 和 --entry");
+    if (values.engine !== undefined && values.engine !== "node")
+      throw new Error("当前仅支持 node 运行环境");
+  }
+  if (command === "update" && values.description === undefined && values.engine === undefined)
+    throw new Error("update需提供 --description 或运行声明");
+  if (values.status !== undefined &&
+      !["pending", "running", "succeeded", "failed", "conflict"].includes(values.status))
+    throw new Error("不支持的事件状态");
   if (command === "query") {
     if (values.sql !== undefined && (values.text !== undefined || values.entry !== undefined))
       throw new Error("SQL 查询不能同时指定 --text 或 --entry");

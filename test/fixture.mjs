@@ -7,18 +7,11 @@ export async function repositoryFixture(t, source) {
   const directory = await mkdtemp(join(tmpdir(), "capsule-sync-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repository = join(directory, "remote");
-  await mkdir(join(repository, "files"), { recursive: true });
+  await mkdir(repository, { recursive: true });
   await git(["init", "-b", "main"], repository);
   await git(["config", "user.name", "Capsule test"], repository);
   await git(["config", "user.email", "capsule-test@localhost"], repository);
-  await writeFile(join(repository, "files", "main.mjs"), source);
-  await writeFile(join(repository, "cap.json"), JSON.stringify({
-    format: 2,
-    name: "工具",
-    kind: "code",
-    description: "",
-    runtime: { engine: "node", entry: "main.mjs" },
-  }));
+  await writeFile(join(repository, "main.mjs"), source);
   await git(["add", "."], repository);
   await git(["commit", "-m", "initial"], repository);
   const record = {
@@ -47,7 +40,7 @@ export async function repositoryFixture(t, source) {
     },
   };
   async function update(content) {
-    await writeFile(join(repository, "files", "main.mjs"), content);
+    await writeFile(join(repository, "main.mjs"), content);
     await git(["add", "."], repository);
     await git(["commit", "-m", "update"], repository);
     record.commit = await git(["rev-parse", "HEAD"], repository);

@@ -39,6 +39,25 @@ test("HTTP 冲突保留错误状态并隐藏凭据", async () => {
   });
 });
 
+test("写入发布失败保留可查询事件回执，不自动重放", async () => {
+  let calls = 0;
+  const api = new ApiClient({ serverUrl: "http://test", token: "" }, async () => {
+    calls++;
+    return Response.json({
+      error: "提交已保存，事件待恢复",
+      code: "PUBLISH_PENDING",
+      eventId: "operation-receipt",
+    }, { status: 500 });
+  });
+  await assert.rejects(api.json("/api/capsules/test/write", "POST", {}), (error) => {
+    assert.equal(error.status, 500);
+    assert.equal(error.code, "PUBLISH_PENDING");
+    assert.equal(error.eventId, "operation-receipt");
+    return true;
+  });
+  assert.equal(calls, 1);
+});
+
 test("下载流中断后清理暂存，已有目标保持原字节", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "capsule-download-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

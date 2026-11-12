@@ -43,6 +43,6 @@ export async function regularEntry(root, entry) {
     delta.startsWith(".." + sep) ||
     !(await lstat(current)).isFile()
   )
-    throw new Error("内部条目必须位于胶囊 files/ 内且为普通文件");
+    throw new Error("内容必须位于胶囊根目录内且为普通文件");
   return current;
 }

@@ -7,6 +7,7 @@ import { help } from "./commands/help.mjs";
 import { capsuleCommand } from "./commands/capsules.mjs";
 import { mountCommand } from "./commands/mounts.mjs";
 import { dataCommand } from "./commands/data.mjs";
+import { eventCommand } from "./commands/events.mjs";
 import { synchronize } from "./cache/sync.mjs";
 import { runCapsule } from "./runtime/run.mjs";
 import { doctor } from "./runtime/doctor.mjs";
@@ -27,6 +28,10 @@ export async function dispatch(args, api) {
     case "write":
     case "get":
       return dataCommand(api, args);
+    case "revert":
+    case "event":
+    case "events":
+      return eventCommand(api, args);
     case "ls":
     case "mount":
     case "position":
@@ -57,6 +62,14 @@ export async function main(
     return args.command === "run" ? result.exitCode || (result.logError ? 1 : 0) : 0;
   } catch (error) {
     if (error.result) io.stdout.write(JSON.stringify(error.result, null, 2) + "\n");
+    else if (error.eventId) {
+      const receipt = {
+        eventId: error.eventId,
+        ...(error.code ? { code: error.code } : {}),
+        status: error.status,
+      };
+      io.stdout.write(JSON.stringify(receipt, null, 2) + "\n");
+    }
     let message = String(error.message);
     if (config?.token)
       message = message.replaceAll(config.token, "[凭据已隐藏]");

@@ -6,8 +6,6 @@ export async function capsuleCommand(api, { command, positional, values }) {
   const name = capsuleName(positional[0]);
   switch (command) {
     case "create": {
-      if (Boolean(values.engine) !== Boolean(values.entry))
-        throw new Error("运行配置需同时提供 --engine 和 --entry");
       const input = { name, description: values.description || "" };
       if (values.kind !== undefined) input.kind = values.kind;
       if (values.body) input.body = await readFile(values.body, "utf8");
@@ -20,13 +18,20 @@ export async function capsuleCommand(api, { command, positional, values }) {
       return api.json("/api/capsules", "POST", input);
     }
     case "stat":
-      return api.json(api.path(name));
+      return api.json(api.path(name, "", values));
+    case "update": {
+      const input = { token: values.token };
+      if (values.description !== undefined) input.description = values.description;
+      if (values.engine !== undefined)
+        input.runtime = { engine: values.engine, entry: entryPath(values.entry) };
+      return api.json(api.path(name), "PATCH", input);
+    }
     case "entries":
       return api.json(api.path(name, "entries", values));
     case "read":
       return api.json(
         api.path(name, "read", {
-          entry: entryPath(positional[1] || "说明.md"),
+          ...(positional[1] === undefined ? {} : { entry: entryPath(positional[1]) }),
           ...values,
         }),
       );
@@ -35,8 +40,8 @@ export async function capsuleCommand(api, { command, positional, values }) {
     case "put":
       return api.upload(
         name,
-        entryPath(positional[1]),
-        positional[2],
+        positional.length === 2 ? undefined : entryPath(positional[1]),
+        positional.at(-1),
         values.token,
       );
     case "remove-entry":

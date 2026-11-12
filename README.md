@@ -2,7 +2,7 @@
 
 人与Agent共用的胶囊客户端。通过统一API浏览和修改服务端知识，按Git提交号同步胶囊，并在本地工作目录运行工具。
 
-- 状态：开发中，API v2客户端。
+- 状态：开发中，API v3客户端，使用干净开发数据。
 - 环境：Node.js 24或以上，Git。
 - 服务端项目位于同级的`capsule-server/`。
 
@@ -32,10 +32,10 @@ node src/cli.mjs list --kind database
 node src/cli.mjs ls /
 node src/cli.mjs stat 工具
 node src/cli.mjs entries 工具
-node src/cli.mjs read 工具 说明.md --from 1 --limit 20
+node src/cli.mjs read 工具 --from 1 --limit 20
 ```
 
-list按类别分页查询胶囊概要，ls展开当前虚拟位置，entries直接列出实际文件，read按行读取指定正文。query统一处理文本搜索或SQLite查询，write统一处理文本写入或数据库事务。命令输出JSON，正文响应保留读取范围和续读位置。
+list按类别分页查询cap概要，ls展开虚拟位置，entries列举原生内容。单文件可直接read名称，目录指定相对路径。query处理文本或SQLite查询，write处理文本或数据库事务，输出保留范围和续读位置。
 
 ## 创建与写入
 
@@ -64,7 +64,31 @@ node src/cli.mjs run 求和工具 -- 2 3
 
 每次内容修改在原胶囊内形成新Git提交。再次运行时，客户端取得服务端当前提交，同步并核验后执行。run输出实际提交、退出码、stdout和stderr，工具失败时CLI返回非零。
 
-运行结果保存在客户端工作区的runs.sqlite。已存在的result.json运行记录会迁入数据库，成功保存后清理旧记录文件，运行工作文件仍在原目录。
+缓存提交、元数据快照和运行记录统一保存在客户端工作区的client.sqlite。工具从同步提交的原生根目录运行，运行声明取自该提交绑定的顶层元数据。当前开发阶段退出旧JSON状态和日志迁移逻辑，使用干净工作区。
+
+## 单文件与元数据
+
+```sh
+node src/cli.mjs create 产品说明.txt --kind text --body ./说明.txt
+node src/cli.mjs read 产品说明.txt
+node src/cli.mjs put 产品说明.txt ./修订说明.txt --token TOKEN
+node src/cli.mjs get 产品说明.txt ./下载说明.txt
+node src/cli.mjs update 产品说明.txt --description 修订说明 --token CURRENT_TOKEN
+```
+
+单文件直接位于服务端capsules/。files、database、code使用独立目录，其内容直接从原生根寻址。code的update可设置--engine node与--entry，元数据修改会形成新提交。
+
+## 排队回撤
+
+```sh
+node src/cli.mjs history 产品说明.txt
+node src/cli.mjs revert 产品说明.txt TARGET_COMMIT --token CURRENT_TOKEN
+node src/cli.mjs event EVENT_ID
+node src/cli.mjs events --status conflict
+node src/cli.mjs stat 产品说明.txt --commit OLD_COMMIT
+```
+
+revert入队后等待终态，返回事件及结果。回撤恢复目标内容与对应元数据，并生成新提交。历史stat没有可写token，新的写入应使用当前stat结果。等待超时保留事件ID，先查询状态再决定后续操作。
 
 ## 数据库、媒体与日志
 

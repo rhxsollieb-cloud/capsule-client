@@ -18,12 +18,12 @@ test("同步 bundle 并切换精确提交，已有修改保持原样", async (t)
   const second = await synchronize(api, "工具");
   assert.equal(second.commit, secondCommit);
   assert.equal(
-    await readFile(join(second.repository, "files", "main.mjs"), "utf8"),
+    await readFile(join(second.repository, "main.mjs"), "utf8"),
     "console.log('second');\n",
   );
-  await writeFile(join(second.repository, "files", "main.mjs"), "my draft");
+  await writeFile(join(second.repository, "main.mjs"), "my draft");
   await assert.rejects(synchronize(api, "工具"), /未提交改动/u);
-  assert.equal(await readFile(join(second.repository, "files", "main.mjs"), "utf8"), "my draft");
+  assert.equal(await readFile(join(second.repository, "main.mjs"), "utf8"), "my draft");
 });
 
 test("运行使用独立目录，记录提交号、参数和非零退出码", async (t) => {
@@ -39,7 +39,7 @@ process.exitCode = 7;
   assert.equal(result.exitCode, 7);
   assert.equal(await readFile(join(result.directory, "work", "output.txt"), "utf8"), "a b $(unsafe)");
   assert.equal(existsSync(join(result.directory, "result.json")), false);
-  const logs = new DatabaseSync(join(api.config.home, "runs.sqlite"), { readOnly: true });
+  const logs = new DatabaseSync(join(api.config.home, "client.sqlite"), { readOnly: true });
   try {
     assert.equal(logs.prepare("SELECT exit_code FROM runs WHERE id=?").get(result.id).exit_code, 7);
   } finally {
@@ -51,7 +51,7 @@ process.exitCode = 7;
 
 test("运行器明确报告尚未提供的第三方依赖环境", async (t) => {
   const { api, repository, record } = await repositoryFixture(t, "console.log('unused');\n");
-  await writeFile(join(repository, "files", "package.json"), JSON.stringify({ dependencies: { example: "1.0.0" } }));
+  await writeFile(join(repository, "package.json"), JSON.stringify({ dependencies: { example: "1.0.0" } }));
   await git(["add", "."], repository);
   await git(["commit", "-m", "dependency"], repository);
   record.commit = await git(["rev-parse", "HEAD"], repository);
@@ -60,12 +60,12 @@ test("运行器明确报告尚未提供的第三方依赖环境", async (t) => {
 
 test("Git 忽略的本地文件同样阻止缓存覆盖", async (t) => {
   const { api, repository, record } = await repositoryFixture(t, "console.log('unused');\n");
-  await writeFile(join(repository, ".gitignore"), "files/scratch/\n");
+  await writeFile(join(repository, ".gitignore"), "scratch/\n");
   await git(["add", ".gitignore"], repository);
   await git(["commit", "-m", "ignore scratch"], repository);
   record.commit = await git(["rev-parse", "HEAD"], repository);
   const cached = await synchronize(api, "工具");
-  const scratch = join(cached.repository, "files", "scratch");
+  const scratch = join(cached.repository, "scratch");
   await mkdir(scratch);
   await writeFile(join(scratch, "draft.txt"), "keep this draft");
   await assert.rejects(synchronize(api, "工具"), /未提交改动/u);

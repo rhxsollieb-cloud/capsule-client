@@ -18,9 +18,9 @@ console.log(readFileSync("original.txt").toString("hex"));
   const { api, repository, record, directory } = fixture;
   const bytes = Buffer.from("first\r\nsecond\n$Id$\r\n", "utf8");
   await prepareWorkingCopy(repository);
-  await writeFile(join(repository, "files", "original.txt"), bytes);
+  await writeFile(join(repository, "original.txt"), bytes);
   await writeFile(
-    join(repository, "files", ".gitattributes"),
+    join(repository, ".gitattributes"),
     "* text eol=crlf ident filter=fail\n*.txt working-tree-encoding=UTF-16\n",
   );
   await git(["add", "."], repository);
@@ -39,7 +39,7 @@ console.log(readFileSync("original.txt").toString("hex"));
 
   const cached = await synchronize(api, "工具");
   assert.deepEqual(
-    await readFile(join(cached.repository, "files", "original.txt")),
+    await readFile(join(cached.repository, "original.txt")),
     bytes,
   );
   assert.equal((await synchronize(api, "工具")).changed, false);
@@ -52,13 +52,13 @@ console.log(readFileSync("original.txt").toString("hex"));
   );
 
   const updatedBytes = Buffer.from("updated\r\n$Id$\n", "utf8");
-  await writeFile(join(repository, "files", "original.txt"), updatedBytes);
+  await writeFile(join(repository, "original.txt"), updatedBytes);
   await git(["add", "."], repository);
   await git(["commit", "-m", "update original bytes"], repository);
   record.commit = await git(["rev-parse", "HEAD"], repository);
   const updated = await synchronize(api, "工具");
   assert.deepEqual(
-    await readFile(join(updated.repository, "files", "original.txt")),
+    await readFile(join(updated.repository, "original.txt")),
     updatedBytes,
   );
 });

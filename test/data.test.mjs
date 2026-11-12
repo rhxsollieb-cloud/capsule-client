@@ -29,6 +29,8 @@ test("类别和统一查询参数在CLI入口正确传递", async () => {
   await dispatch(parseArguments(["query", "代码", "--text", "function", "--entry", "main.mjs"]), api);
   assert.deepEqual(calls[2].body, { text: "function", entry: "main.mjs" });
   assert.throws(() => parseArguments(["create", "日志", "--kind", "log"]), /类别/u);
+  for (const kind of ["text", "image", "audio", "video", "excel", "word", "file", "files", "code"])
+    assert.equal(parseArguments(["create", "条目", "--kind", kind]).values.kind, kind);
   assert.throws(() => parseArguments(["query", "数据", "--sql", "SELECT 1", "--text", "x"]), /不能同时/u);
   await assert.rejects(
     dispatch(parseArguments(["query", "记录", "--sql", "SELECT 1", "--params", "null"]), api),
@@ -59,4 +61,24 @@ test("run分隔符之后的help和log-cap原样交给工具", () => {
   const parsed = parseArguments(["run", "工具", "--log-cap", "数据库", "--", "--help", "--log-cap", "原参数"]);
   assert.equal(parsed.values["log-cap"], "数据库");
   assert.deepEqual(parsed.runtimeArgs, ["--help", "--log-cap", "原参数"]);
+});
+
+test("单文件便捷读写和历史元数据采用统一接口", async () => {
+  const calls = [];
+  const api = client(calls);
+  api.upload = async (...args) => { calls.push(args); return {}; };
+  api.download = async (...args) => { calls.push(args); return {}; };
+  await dispatch(parseArguments(["read", "说明.txt"]), api);
+  assert.deepEqual(calls[0].path.query, {});
+  await dispatch(parseArguments(["stat", "说明.txt", "--commit", "old"]), api);
+  assert.deepEqual(calls[1].path.query, { commit: "old" });
+  await dispatch(parseArguments(["put", "照片.jpg", "./input.jpg", "--token", "version"]), api);
+  assert.deepEqual(calls[2], ["照片.jpg", undefined, "./input.jpg", "version"]);
+  await dispatch(parseArguments(["get", "照片.jpg", "./output.jpg"]), api);
+  assert.deepEqual(calls[3], [{ name: "照片.jpg", operation: "content", query: { entry: undefined } }, "./output.jpg"]);
+  await dispatch(parseArguments(["update", "代码", "--engine", "node", "--entry", "new.mjs", "--description", "新版", "--token", "current"]), api);
+  assert.equal(calls[4].method, "PATCH");
+  assert.deepEqual(calls[4].body, {
+    token: "current", description: "新版", runtime: { engine: "node", entry: "new.mjs" },
+  });
 });

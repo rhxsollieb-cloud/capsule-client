@@ -30,12 +30,15 @@ export class ApiClient {
     if (!response.ok) {
       let details;
       try {
-        details = (await response.json()).error;
+        const payload = await response.json();
+        details = payload && typeof payload === "object" ? payload : {};
       } catch {
-        details = `HTTP ${response.status}`;
+        details = {};
       }
-      const error = new Error(this.redact(String(details || `HTTP ${response.status}`)));
+      const error = new Error(this.redact(String(details.error || `HTTP ${response.status}`)));
       error.status = response.status;
+      if (typeof details.code === "string") error.code = details.code;
+      if (typeof details.eventId === "string") error.eventId = details.eventId;
       throw error;
     }
     return response;

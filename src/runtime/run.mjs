@@ -13,7 +13,6 @@ async function recordResult(api, result, logCap) {
   try {
     const saved = await saveRun(api.config.home, result);
     result.logDatabase = saved.database;
-    if (saved.warnings.length) result.logWarnings = saved.warnings;
     localSaved = true;
   } catch (error) {
     errors.local = error.message;
@@ -24,6 +23,7 @@ async function recordResult(api, result, logCap) {
       result.logCap = { name: logCap, commit: saved.commit };
     } catch (error) {
       errors.remote = error.message;
+      if (error.eventId) result.logCap = { name: logCap, eventId: error.eventId };
     }
   }
   if (Object.keys(errors).length) result.logError = errors;
@@ -53,7 +53,7 @@ export async function runCapsule(api, name, args = [], { logCap } = {}) {
   let result;
   let executionError;
   try {
-    const prepared = await prepareRun(synced, directory);
+    const prepared = await prepareRun(api.config, synced, directory);
     const environment = { ...process.env };
     delete environment.CAPSULE_TOKEN;
     const execution = await execute(process.execPath, [prepared.entry, ...args], {

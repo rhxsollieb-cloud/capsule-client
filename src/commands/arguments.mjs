@@ -43,7 +43,7 @@ export function parseArguments(argv) {
     const expected = min === max ? min : `${min}–${max}`;
     throw new Error(`命令 ${command} 需要 ${expected} 个位置参数`);
   }
-  for (const key of ["limit", "offset", "from"]) {
+  for (const key of ["limit", "offset", "from", "timeout"]) {
     if (values[key] === undefined) continue;
     const number = Number(values[key]);
     if (!Number.isSafeInteger(number) || number < (key === "offset" ? 0 : 1))

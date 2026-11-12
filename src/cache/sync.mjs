@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../system/process.mjs";
 import { prepareWorkingCopy } from "../system/gitWorkingCopy.mjs";
 import { capsuleName } from "../system/paths.mjs";
 import { withCacheLock } from "./lock.mjs";
+import { saveCachedVersion } from "./metadata.mjs";
 
 async function exists(path) {
   try {
@@ -29,8 +30,10 @@ function assertCommit(commit) {
 }
 
 export async function synchronize(api, name, { kind } = {}) {
-  const capsule = await api.json(api.path(capsuleName(name)));
-  capsuleName(capsule.name);
+  const requested = capsuleName(name);
+  const capsule = await api.json(api.path(requested));
+  if (capsule.name !== requested)
+    throw new Error("服务端返回了不同名称的胶囊，同步已停止");
   assertCommit(capsule.commit);
   if (kind && capsule.kind !== kind)
     throw new Error(`仅 ${kind} 类别的胶囊可以执行此操作`);
@@ -50,8 +53,10 @@ export async function synchronize(api, name, { kind } = {}) {
       )
         throw new Error("本地胶囊缓存含未提交改动，请先保留改动后再同步");
       previous = await git(["rev-parse", "HEAD"], repository);
-      if (previous === capsule.commit)
+      if (previous === capsule.commit) {
+        await saveCachedVersion(api.config, capsule, repository);
         return { ...capsule, repository, changed: false };
+      }
     }
     const temporary = await mkdtemp(join(directory, ".sync-"));
     try {
@@ -79,14 +84,7 @@ export async function synchronize(api, name, { kind } = {}) {
       if (await git(["rev-parse", "HEAD"], target) !== capsule.commit)
         throw new Error("本地版本校验失败");
       if (!present) await rename(target, repository);
-      const state = {
-        name: capsule.name,
-        serverUrl: api.config.serverUrl,
-        commit: capsule.commit,
-      };
-      const stateFile = join(temporary, "state.json");
-      await writeFile(stateFile, JSON.stringify(state, null, 2) + "\n");
-      await rename(stateFile, join(directory, "state.json"));
+      await saveCachedVersion(api.config, capsule, repository);
       return { ...capsule, repository, changed: true };
     } catch (error) {
       if (present && previous) {
