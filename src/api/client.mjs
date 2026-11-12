@@ -1,5 +1,6 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { link, mkdtemp, rm, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -69,6 +70,7 @@ export class ApiClient {
         },
         body: source,
         duplex: "half",
+        signal: AbortSignal.timeout(30 * 60 * 1000),
       });
       return await response.json();
     } finally {
@@ -76,11 +78,23 @@ export class ApiClient {
     }
   }
   async download(path, file) {
-    const response = await this.response(path);
-    if (!response.body) throw new Error("服务端未返回文件内容");
-    await pipeline(
-      Readable.fromWeb(response.body),
-      createWriteStream(file, { flags: "wx" }),
-    );
+    const destination = resolve(file);
+    const directory = await mkdtemp(join(dirname(destination), ".capsule-download-"));
+    try {
+      const response = await this.response(path, {
+        signal: AbortSignal.timeout(30 * 60 * 1000),
+      });
+      if (!response.body) throw new Error("服务端未返回文件内容");
+      const temporary = join(directory, "content");
+      await pipeline(
+        Readable.fromWeb(response.body),
+        createWriteStream(temporary, { flags: "wx" }),
+      );
+      const info = await stat(temporary);
+      await link(temporary, destination);
+      return { path: destination, size: info.size };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 }

@@ -9,6 +9,7 @@ export async function capsuleCommand(api, { command, positional, values }) {
       if (Boolean(values.engine) !== Boolean(values.entry))
         throw new Error("运行配置需同时提供 --engine 和 --entry");
       const input = { name, description: values.description || "" };
+      if (values.kind !== undefined) input.kind = values.kind;
       if (values.body) input.body = await readFile(values.body, "utf8");
       if (values.engine) {
         input.runtime = {

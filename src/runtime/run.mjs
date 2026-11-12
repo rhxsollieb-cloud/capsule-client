@@ -1,88 +1,77 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { synchronize } from "../cache/sync.mjs";
-import { execute, git } from "../system/process.mjs";
-import { prepareWorkingCopy } from "../system/gitWorkingCopy.mjs";
-import { entryPath, regularEntry } from "../system/paths.mjs";
+import { execute } from "../system/process.mjs";
+import { prepareRun } from "./snapshot.mjs";
+import { saveRun } from "./logs.mjs";
+import { saveRemoteRun } from "./remoteLogs.mjs";
 
-async function inspectFiles(directory) {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) throw new Error("运行文件中包含符号链接");
-    if (entry.isDirectory()) await inspectFiles(join(directory, entry.name));
-    else if (!entry.isFile()) throw new Error("运行文件必须为普通文件");
-  }
-}
-
-async function inspectDependencies(directory) {
-  let manifest;
+async function recordResult(api, result, logCap) {
+  const errors = {};
+  let localSaved = false;
   try {
-    manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+    const saved = await saveRun(api.config.home, result);
+    result.logDatabase = saved.database;
+    if (saved.warnings.length) result.logWarnings = saved.warnings;
+    localSaved = true;
   } catch (error) {
-    if (error.code === "ENOENT") return;
-    throw error;
+    errors.local = error.message;
   }
-  const dependencyGroups = [
-    manifest.dependencies,
-    manifest.optionalDependencies,
-    manifest.devDependencies,
-  ];
-  if (dependencyGroups.some((dependencies) => Object.keys(dependencies || {}).length))
-    throw new Error("此工具声明了第三方依赖；当前运行器仅支持 Node 内置模块，尚未提供依赖安装能力");
+  if (logCap) {
+    try {
+      const saved = await saveRemoteRun(api, logCap, result);
+      result.logCap = { name: logCap, commit: saved.commit };
+    } catch (error) {
+      errors.remote = error.message;
+    }
+  }
+  if (Object.keys(errors).length) result.logError = errors;
+  if (logCap && localSaved) {
+    try {
+      await saveRun(api.config.home, result);
+    } catch (error) {
+      errors.local = error.message;
+      result.logError = errors;
+    }
+  }
+  return result;
 }
 
-export async function runCapsule(api, name, args = []) {
-  const synced = await synchronize(api, name);
-  if (!synced.runtime || synced.runtime.engine !== "node")
-    throw new Error("胶囊需要声明受支持的 runtime.engine=node 和入口");
-  entryPath(synced.runtime.entry);
+export async function runCapsule(api, name, args = [], { logCap } = {}) {
+  const synced = await synchronize(api, name, { kind: "code" });
   const id = randomUUID();
   const directory = join(api.config.home, "runs", id);
-  const snapshot = join(directory, "snapshot");
-  const work = join(directory, "work");
   await mkdir(directory, { recursive: true });
+  const identity = {
+    id,
+    name: synced.name,
+    commit: synced.commit,
+    directory,
+    createdAt: new Date().toISOString(),
+  };
   let result;
+  let executionError;
   try {
-    await git(["clone", "--no-checkout", "--no-hardlinks", "--", synced.repository, snapshot]);
-    await prepareWorkingCopy(snapshot);
-    await git(["checkout", "--detach", synced.commit], snapshot);
-    const files = join(snapshot, "files");
-    await inspectFiles(files);
-    await cp(files, work, { recursive: true, force: false, errorOnExist: true });
-    await inspectDependencies(work);
-    const entry = await regularEntry(work, synced.runtime.entry);
+    const prepared = await prepareRun(synced, directory);
     const environment = { ...process.env };
     delete environment.CAPSULE_TOKEN;
-    result = await execute(process.execPath, [entry, ...args], {
-      cwd: work,
+    const execution = await execute(process.execPath, [prepared.entry, ...args], {
+      cwd: prepared.work,
       check: false,
       env: environment,
     });
-    result = {
-      id,
-      name: synced.name,
-      commit: synced.commit,
-      directory,
-      ...result,
-    };
-    await writeFile(
-      join(directory, "result.json"),
-      JSON.stringify(result, null, 2) + "\n",
-    );
-    return result;
+    result = { ...identity, ...execution };
   } catch (error) {
-    const failure = {
-      id,
-      name: synced.name,
-      commit: synced.commit,
-      error: error.message,
-    };
-    await writeFile(
-      join(directory, "result.json"),
-      JSON.stringify(failure, null, 2) + "\n",
-    );
-    throw error;
+    executionError = error;
+    result = { ...identity, error: error.message };
   } finally {
-    await rm(snapshot, { recursive: true, force: true });
+    await rm(join(directory, "snapshot"), { recursive: true, force: true });
   }
+  await recordResult(api, result, logCap);
+  if (executionError) {
+    executionError.result = result;
+    throw executionError;
+  }
+  return result;
 }

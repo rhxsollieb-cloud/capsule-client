@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiClient } from "../src/api/client.mjs";
@@ -37,4 +37,40 @@ test("HTTP 冲突保留错误状态并隐藏凭据", async () => {
     assert.equal(error.message, "冲突 [凭据已隐藏]");
     return true;
   });
+});
+
+test("下载流中断后清理暂存，已有目标保持原字节", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "capsule-download-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const destination = join(directory, "result.bin");
+  const failing = new ApiClient({ serverUrl: "http://test", token: "" }, async () =>
+    new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        controller.error(new Error("模拟中途断开"));
+      },
+    })));
+  await assert.rejects(failing.download("/content", destination), /中途断开/u);
+  assert.deepEqual(await readdir(directory), []);
+  await writeFile(destination, "original");
+  const succeeding = new ApiClient({ serverUrl: "http://test", token: "" }, async () =>
+    new Response("replacement"));
+  await assert.rejects(succeeding.download("/content", destination), { code: "EEXIST" });
+  assert.equal(await readFile(destination, "utf8"), "original");
+  assert.deepEqual(await readdir(directory), ["result.bin"]);
+});
+
+test("下载目标目录无效时先拒绝，不打开远端媒体流", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "capsule-download-target-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let requested = false;
+  const api = new ApiClient({ serverUrl: "http://test", token: "" }, async () => {
+    requested = true;
+    return new Response("media");
+  });
+  await assert.rejects(api.download("/content", join(directory, "missing", "media.bin")), {
+    code: "ENOENT",
+  });
+  assert.equal(requested, false);
+  assert.deepEqual(await readdir(directory), []);
 });

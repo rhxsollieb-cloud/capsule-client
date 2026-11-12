@@ -2,7 +2,7 @@
 
 人与Agent共用的胶囊客户端。通过统一API浏览和修改服务端知识，按Git提交号同步胶囊，并在本地工作目录运行工具。
 
-- 状态：开发中，首个可运行CLI版本。
+- 状态：开发中，API v2客户端。
 - 环境：Node.js 24或以上，Git。
 - 服务端项目位于同级的`capsule-server/`。
 
@@ -28,20 +28,21 @@ npm start -- help
 ```sh
 node src/cli.mjs health
 node src/cli.mjs list
+node src/cli.mjs list --kind database
 node src/cli.mjs ls /
 node src/cli.mjs stat 工具
 node src/cli.mjs entries 工具
 node src/cli.mjs read 工具 说明.md --from 1 --limit 20
 ```
 
-list分页查询胶囊概要，ls展开当前虚拟位置，entries列出胶囊内部条目，read按行读取指定正文。命令输出JSON，正文响应保留读取范围和续读位置。
+list按类别分页查询胶囊概要，ls展开当前虚拟位置，entries直接列出实际文件，read按行读取指定正文。query统一处理文本搜索或SQLite查询，write统一处理文本写入或数据库事务。命令输出JSON，正文响应保留读取范围和续读位置。
 
 ## 创建与写入
 
 ```sh
 node src/cli.mjs create 工具 --description 工具入口
 node src/cli.mjs mount 工具 /工具
-node src/cli.mjs create 求和工具 --engine node --entry main.mjs
+node src/cli.mjs create 求和工具 --kind code --engine node --entry main.mjs
 node src/cli.mjs stat 求和工具
 ```
 
@@ -62,6 +63,27 @@ node src/cli.mjs run 求和工具 -- 2 3
 ```
 
 每次内容修改在原胶囊内形成新Git提交。再次运行时，客户端取得服务端当前提交，同步并核验后执行。run输出实际提交、退出码、stdout和stderr，工具失败时CLI返回非零。
+
+运行结果保存在客户端工作区的runs.sqlite。已存在的result.json运行记录会迁入数据库，成功保存后清理旧记录文件，运行工作文件仍在原目录。
+
+## 数据库、媒体与日志
+
+```sh
+node src/cli.mjs create 运行资料 --kind database
+node src/cli.mjs stat 运行资料
+node src/cli.mjs write 运行资料 --sql 'CREATE TABLE events(id INTEGER PRIMARY KEY, message TEXT, media_path TEXT REFERENCES _cap_files(path))' --token TOKEN
+node src/cli.mjs put 运行资料 media/现场.mp4 ./现场.mp4 --token CURRENT_TOKEN
+node src/cli.mjs query 运行资料 --sql 'SELECT path,size FROM _cap_files' --limit 20
+node src/cli.mjs write 运行资料 --sql 'INSERT INTO events(message,media_path) VALUES (?,?)' --params '["现场记录","media/现场.mp4"]' --token CURRENT_TOKEN
+node src/cli.mjs get 运行资料 media/现场.mp4 ./下载的现场.mp4
+node src/cli.mjs run 求和工具 --log-cap 运行资料 -- 2 3
+```
+
+每次写入后使用响应中的新token，示例中的CURRENT_TOKEN表示当前版本。数据库仅支持SQLite。业务表保存文本日志和媒体关联，_cap_files由媒体管理接口维护。媒体保存在该数据库cap的自有文件区，上传和下载使用流式传输。带外键的日志引用会阻止删除仍被使用的媒体。
+
+run的--log-cap显式选择数据库，将结果写入cap_run_logs表。日志写入失败会返回可见诊断并保留本地实际运行记录，调用者可按运行ID查询，避免重新执行工具。
+
+query和write的SQL参数由--params传JSON数组或命名参数对象。批量事务可用write --file指定内容为SQL语句对象数组的JSON文件，text/code等类别可用query --text检索、write --entry及--body修改文本。具体语法见分层帮助和[API契约](../capsule-server/docs/api.md)。
 
 位置修改使用position取得的位置token。卸载位置保留胶囊内容。
 
@@ -87,6 +109,6 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 ## 当前边界
 
-第一版提供CLI、独立胶囊缓存和Node内置模块脚本运行。带第三方依赖的工具需要环境准备能力，当前会给出诊断。图形界面、Python运行环境和依赖安装将在同一客户端服务上继续扩展。
+当前提供CLI、按类别的统一读写和SQLite查询、独立胶囊缓存及Node内置模块脚本运行。带第三方依赖的工具会给出环境诊断。图形界面、Python运行环境和依赖安装将在同一客户端服务上继续扩展。
 
 异常终止留下的缓存锁会明确给出位置。先停止使用同一缓存的客户端进程，核对原持有者已退出，再移除该锁文件重试。脏缓存中的修改需要先保留并核对。

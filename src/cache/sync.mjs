@@ -28,10 +28,12 @@ function assertCommit(commit) {
     throw new Error("服务端未返回有效的完整提交号");
 }
 
-export async function synchronize(api, name) {
+export async function synchronize(api, name, { kind } = {}) {
   const capsule = await api.json(api.path(capsuleName(name)));
   capsuleName(capsule.name);
   assertCommit(capsule.commit);
+  if (kind && capsule.kind !== kind)
+    throw new Error(`仅 ${kind} 类别的胶囊可以执行此操作`);
   const directory = cacheDirectory(api.config, capsule.name);
   return withCacheLock(directory + ".lock", async () => {
     await mkdir(directory, { recursive: true });

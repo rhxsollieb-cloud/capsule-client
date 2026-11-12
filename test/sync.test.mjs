@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { synchronize } from "../src/cache/sync.mjs";
@@ -36,7 +38,13 @@ process.exitCode = 7;
   assert.equal(result.commit, record.commit);
   assert.equal(result.exitCode, 7);
   assert.equal(await readFile(join(result.directory, "work", "output.txt"), "utf8"), "a b $(unsafe)");
-  assert.equal(JSON.parse(await readFile(join(result.directory, "result.json"), "utf8")).exitCode, 7);
+  assert.equal(existsSync(join(result.directory, "result.json")), false);
+  const logs = new DatabaseSync(join(api.config.home, "runs.sqlite"), { readOnly: true });
+  try {
+    assert.equal(logs.prepare("SELECT exit_code FROM runs WHERE id=?").get(result.id).exit_code, 7);
+  } finally {
+    logs.close();
+  }
   const cached = await synchronize(api, "工具");
   assert.equal(await git(["status", "--porcelain"], cached.repository), "");
 });

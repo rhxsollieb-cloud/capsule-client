@@ -12,10 +12,18 @@ export async function repositoryFixture(t, source) {
   await git(["config", "user.name", "Capsule test"], repository);
   await git(["config", "user.email", "capsule-test@localhost"], repository);
   await writeFile(join(repository, "files", "main.mjs"), source);
+  await writeFile(join(repository, "cap.json"), JSON.stringify({
+    format: 2,
+    name: "工具",
+    kind: "code",
+    description: "",
+    runtime: { engine: "node", entry: "main.mjs" },
+  }));
   await git(["add", "."], repository);
   await git(["commit", "-m", "initial"], repository);
   const record = {
     name: "工具",
+    kind: "code",
     description: "",
     commit: await git(["rev-parse", "HEAD"], repository),
     token: "first",

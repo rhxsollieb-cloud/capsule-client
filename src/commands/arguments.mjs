@@ -1,41 +1,4 @@
-const options = {
-  health: [],
-  list: ["query", "limit", "offset"],
-  ls: ["limit", "offset"],
-  create: ["description", "body", "engine", "entry"],
-  stat: [],
-  entries: ["limit", "offset"],
-  read: ["from", "limit"],
-  put: ["token"],
-  "remove-entry": ["token"],
-  mount: [],
-  position: [],
-  move: ["token"],
-  unmount: ["token"],
-  history: ["limit", "offset"],
-  sync: [],
-  run: [],
-  doctor: [],
-};
-const arity = {
-  health: [0, 0],
-  list: [0, 0],
-  ls: [0, 1],
-  create: [1, 1],
-  stat: [1, 1],
-  entries: [1, 1],
-  read: [1, 2],
-  put: [3, 3],
-  "remove-entry": [2, 2],
-  mount: [2, 2],
-  position: [1, 1],
-  move: [2, 2],
-  unmount: [1, 1],
-  history: [1, 1],
-  sync: [1, 1],
-  run: [1, 1],
-  doctor: [0, 0],
-};
+import { options, arity, validateValues } from "./specification.mjs";
 
 export function parseArguments(argv) {
   const [command = "help", ...rest] = argv;
@@ -45,7 +8,9 @@ export function parseArguments(argv) {
     return { command: "help", topic: rest[0] };
   }
   if (!options[command]) throw new Error("未知命令：" + command);
-  if (rest.includes("--help")) return { command: "help", topic: command };
+  const separator = rest.indexOf("--");
+  const commandArguments = separator < 0 ? rest : rest.slice(0, separator);
+  if (commandArguments.includes("--help")) return { command: "help", topic: command };
   const positional = [];
   const values = {};
   const runtimeArgs = [];
@@ -85,10 +50,6 @@ export function parseArguments(argv) {
       throw new Error(`参数 --${key} 需为有效整数`);
     values[key] = number;
   }
-  if (
-    ["put", "remove-entry", "move", "unmount"].includes(command) &&
-    !values.token
-  )
-    throw new Error("写入需要 --token，请先读取当前实体或位置版本");
+  validateValues(command, values);
   return { command, positional, values, runtimeArgs };
 }
