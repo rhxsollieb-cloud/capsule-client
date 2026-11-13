@@ -2,13 +2,12 @@ import { action } from "./api.mjs";
 import { button, node, replace, shortCommit } from "./dom.mjs";
 import { createDataGrid } from "./data-grid.mjs";
 import { createDraft, draftKey, editCell, editableCell } from "./database-drafts.mjs";
+import { saveErrorPresentation, saveErrorRecord } from "./save-errors.mjs";
 
 export class DatabaseView {
   constructor(container, cap, { isCurrent, onError, table, drafts = new Map(), onDirty, onSaved, onTableSelected }) {
     Object.assign(this, { container, cap, isCurrent, onError, drafts, onDirty, onSaved, onTableSelected });
     this.wrapper = node("div", "query-panel");
-    const heading = node("div", "database-heading");
-    heading.append(node("span", "content-eyebrow", "SQLITE DATABASE"), node("h1", "", cap.name));
     this.title = node("span", "database-table-title", "读取数据表…");
     this.note = node("span", "database-note");
     this.save = button("保存修改", () => this.saveChanges(), "button primary");
@@ -22,8 +21,8 @@ export class DatabaseView {
     const sql = node("details", "sql-disclosure");
     sql.append(node("summary", "", "SQL只读查询"), this.input, this.execute);
     this.results = node("div", "query-results database-results");
-    const hint = node("p", "grid-hint", "双击业务表单元格编辑，点击保存统一提交。排序和筛选作用于当前页。");
-    this.wrapper.append(heading, this.toolbar, sql, hint, this.results);
+    this.toolbar.title = "双击业务表单元格编辑，点击保存统一提交。排序和筛选作用于当前页。";
+    this.wrapper.append(this.toolbar, sql, this.results);
     replace(container, this.wrapper);
     this.input.addEventListener("keydown", (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); this.query(0); }
@@ -36,6 +35,7 @@ export class DatabaseView {
     this.busy = false;
     if (!this.isCurrent()) return;
     this.controls();
+    this.onDirty?.();
     const pending = this.pendingRefresh;
     this.pendingRefresh = null;
     if (pending && pending.commit !== this.record?.commit) this.refresh(pending);
@@ -47,6 +47,8 @@ export class DatabaseView {
     this.note.textContent = this.hasDirty()
       ? `${this.draft.saving ? "正在保存" : `${this.draft.changes.size} 行未保存`} · 基于 ${shortCommit(this.draft.record.commit)}${this.remote ? " · 服务端已有新版本" : ""}`
       : this.record ? `${shortCommit(this.record.commit)} · ${this.record.editable ? "可编辑" : "只读"}` : "";
+    if (this.hasDirty() && !this.draft.saving && (this.draft.error || this.remote))
+      this.note.textContent += ` · ${saveErrorPresentation(this.draft.error, { remote: this.remote }).message}`;
   }
   async loadTable(table, offset = 0) {
     if (this.busy) return;
@@ -126,9 +128,10 @@ export class DatabaseView {
   async saveChanges() {
     if (this.busy || this.draft?.saving || !this.hasDirty()) return;
     this.busy = true;
-    this.controls();
     const draft = this.draft;
     draft.saving = true;
+    draft.error = undefined;
+    this.controls();
     let reload = false;
     let finished;
     draft.completion = new Promise((resolve) => { finished = resolve; });
@@ -143,7 +146,7 @@ export class DatabaseView {
       this.cap = saved;
       reload = true;
     } catch (error) {
-      if (this.isCurrent()) this.note.textContent = `${error.status === 409 ? "版本冲突" : "保存失败"} · 修改已保留`;
+      draft.error = saveErrorRecord(error);
       this.onError(error);
     } finally {
       draft.saving = false;

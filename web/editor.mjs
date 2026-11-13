@@ -1,32 +1,51 @@
 import { action } from "./api.mjs";
-import { button, node, replace, shortCommit } from "./dom.mjs";
-import { icon } from "./icons.mjs";
+import { node, replace, shortCommit } from "./dom.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { saveErrorPresentation, saveErrorRecord } from "./save-errors.mjs";
 
 export class TextEditor {
   constructor({ onSaved, onError, onDirty, onOpenEntry }) {
     this.drafts = new Map();
-    this.onSaved = onSaved;
-    this.onError = onError;
-    this.onDirty = onDirty;
-    this.onOpenEntry = onOpenEntry;
+    Object.assign(this, { onSaved, onError, onDirty, onOpenEntry });
   }
   key(name, entry) { return `${name}\0${entry ?? ""}`; }
   hasDirty(name, entry) { return Boolean(this.drafts.get(this.key(name, entry))?.dirty); }
+  controls(name, entry) {
+    const key = this.key(name, entry);
+    if (this.current?.key !== key) return null;
+    const draft = this.drafts.get(key);
+    if (!draft) return null;
+    const current = this.current;
+    const failure = draft.error || this.current.remote ? saveErrorPresentation(draft.error, { remote: this.current.remote }) : null;
+    const state = draft.saving ? "saving" : failure ? failure.state : draft.dirty ? "dirty" : "clean";
+    const labels = { saving: "保存中", conflict: "版本冲突", error: "保存失败", dirty: "未保存", clean: "已保存" };
+    const statusText = !draft.saving && failure ? failure.label : labels[state];
+    return {
+      state,
+      statusText,
+      detail: `${failure?.message || statusText} · 基于 ${shortCommit(draft.baseCommit)} · ${draft.body.split("\n").length} 行`,
+      canSave: draft.dirty && !draft.saving,
+      save: () => this.current === current ? this.save(current.cap, current.entry, draft, current.saveAction) : undefined,
+      mode: current.mode,
+      toggleMode: current.markdown ? () => {
+        if (this.current === current) current.switchMode(current.mode === "read" ? "edit" : "read");
+      } : undefined,
+      moreItems: draft.dirty ? [{ label: "放弃草稿并重载", disabled: Boolean(draft.saving), action: () => this.discard(key) }] : [],
+    };
+  }
+  notify(cap, entry, dirty) { this.onDirty?.(cap.name, entry, dirty); }
   open(container, cap, entry, record) {
     const key = this.key(cap.name, entry);
     let draft = this.drafts.get(key);
-    if (!draft?.dirty) {
+    if (!draft || (!draft.dirty && !draft.saving)) {
       draft = { body: record.body, original: record.body, baseToken: record.token, baseCommit: record.commit, dirty: false };
       this.drafts.set(key, draft);
     }
     const page = node("div", "editor-page");
     const markdown = cap.kind === "markdown" && !entry || /\.md$/i.test(entry || cap.name);
-    const toolbar = node("div", "reading-toolbar");
     const reading = node("div", "reading-surface");
-    let mode = markdown && !draft.dirty ? "read" : "edit";
     const banner = node("div", "editor-notice");
-    this.current = { key, banner, cap, entry, remote: draft.baseToken !== record.token };
+    this.current = { key, banner, cap, entry, markdown, saveAction: record.saveAction || "save", remote: draft.baseToken !== record.token };
     const shell = node("div", "editor-shell");
     const gutter = node("pre", "line-gutter");
     gutter.setAttribute("aria-hidden", "true");
@@ -35,37 +54,24 @@ export class TextEditor {
     input.spellcheck = false;
     input.wrap = "off";
     input.setAttribute("aria-label", entry || cap.name);
-    const footer = node("div", "editor-footer");
-    const detail = node("span", "muted");
-    const save = button("保存", () => this.save(cap, entry, draft, save, detail));
-    save.className = "button primary";
-    save.prepend(icon("save"));
     const update = () => {
       gutter.textContent = Array.from({ length: Math.max(1, input.value.split("\n").length) }, (_, index) => index + 1).join("\n");
-      save.disabled = !draft.dirty || draft.saving;
-      detail.textContent = `${draft.dirty ? "未保存" : "已保存"} · 基于 ${shortCommit(draft.baseCommit)} · ${input.value.split("\n").length} 行`;
+      this.notify(cap, entry, draft.dirty);
     };
-    const readButton = button("阅读", () => switchMode("read"), "button ghost");
-    const editButton = button(markdown ? "编辑 Markdown" : "源代码", () => switchMode("edit"), "button ghost");
-    const switchMode = (next) => {
-      mode = next;
-      shell.classList.toggle("hidden", mode === "read");
-      reading.classList.toggle("hidden", mode !== "read");
-      readButton.classList.toggle("active", mode === "read");
-      editButton.classList.toggle("active", mode === "edit");
-      if (mode === "read") replace(reading, renderMarkdown(draft.body, {
+    this.current.switchMode = (next) => {
+      this.current.mode = next;
+      shell.classList.toggle("hidden", next === "read");
+      reading.classList.toggle("hidden", next !== "read");
+      if (next === "read") replace(reading, renderMarkdown(draft.body, {
         name: cap.kind === "markdown" || entry ? cap.name : undefined,
         entry: entry || "README.md",
         onOpenEntry: this.onOpenEntry,
       }));
+      this.notify(cap, entry, draft.dirty);
     };
-    toolbar.append(node("span", "content-eyebrow", markdown ? "MARKDOWN" : (entry || cap.name).split(".").at(-1).toUpperCase()));
-    if (markdown) toolbar.append(readButton, editButton);
-    else toolbar.append(node("span", "muted", "UTF-8 · 直接编辑原生文件"));
     input.addEventListener("input", () => {
       draft.body = input.value;
       draft.dirty = draft.body !== draft.original;
-      this.onDirty(cap.name, entry, draft.dirty);
       this.renderNotice(key);
       update();
     });
@@ -73,7 +79,7 @@ export class TextEditor {
     input.addEventListener("keydown", (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (draft.dirty && !draft.saving) this.save(cap, entry, draft, save, detail);
+        if (draft.dirty && !draft.saving) this.save(cap, entry, draft, record.saveAction);
       }
       if (event.key === "Tab") {
         event.preventDefault();
@@ -82,25 +88,26 @@ export class TextEditor {
       }
     });
     shell.append(gutter, input);
-    footer.append(detail, save);
-    page.append(toolbar, banner, reading, shell, footer);
+    page.append(banner, reading, shell);
     replace(container, page);
     this.renderNotice(key);
     update();
-    switchMode(mode);
+    this.current.switchMode(markdown && !draft.dirty ? "read" : "edit");
+  }
+  discard(key) {
+    if (this.current?.key !== key || this.drafts.get(key)?.saving) return;
+    const { cap, entry } = this.current;
+    this.drafts.delete(key);
+    this.notify(cap, entry, false);
+    this.onSaved(cap, { reload: true });
   }
   renderNotice(key) {
     if (this.current?.key !== key) return;
-    const { banner, cap, entry, remote } = this.current;
+    const { banner, remote } = this.current;
     const draft = this.drafts.get(key);
     banner.replaceChildren();
     if (!draft?.dirty) return;
-    if (remote) banner.append(node("span", "error-message remote-notice", "服务端已有新版本。草稿和原基线已保留，请核对后保存。"));
-    banner.append(button("放弃草稿并重载", () => {
-      this.drafts.delete(key);
-      this.onDirty(cap.name, entry, false);
-      this.onSaved(cap, { reload: true });
-    }, "button ghost"));
+    if (remote || draft.error) banner.append(node("span", `error-message${remote ? " remote-notice" : ""}`, saveErrorPresentation(draft.error, { remote }).message));
   }
   markRemote(name, entry) {
     const key = this.key(name, entry);
@@ -108,29 +115,30 @@ export class TextEditor {
     if (!draft?.dirty || this.current?.key !== key) return;
     this.current.remote = true;
     this.renderNotice(key);
+    this.notify(this.current.cap, entry, draft.dirty);
   }
-  async save(cap, entry, draft, buttonElement, detail) {
+  async save(cap, entry, draft, saveAction = "save") {
     if (draft.saving || !draft.dirty) return;
     const sentBody = draft.body;
     draft.saving = true;
-    buttonElement.disabled = true;
-    detail.textContent = "正在保存…";
+    draft.error = undefined;
+    this.notify(cap, entry, draft.dirty);
     try {
-      const saved = await action("save", { name: cap.name, entry, body: sentBody, token: draft.baseToken });
+      const saved = await action(saveAction, { name: cap.name, ...(saveAction === "save" ? { entry } : {}), body: sentBody, token: draft.baseToken });
       draft.original = sentBody;
       draft.baseToken = saved.token;
       draft.baseCommit = saved.commit;
       draft.dirty = draft.body !== sentBody;
-      this.onDirty(cap.name, entry, draft.dirty);
+      if (this.current?.key === this.key(cap.name, entry)) this.current.remote = false;
       this.onSaved(saved, { reload: false });
-      detail.textContent = `${draft.dirty ? "另有未保存修改" : "已保存"} · ${shortCommit(saved.commit)}`;
+      return saved;
     } catch (error) {
-      detail.textContent = error.status === 409 ? "版本冲突 · 草稿已保留" : "保存失败 · 草稿已保留";
+      draft.error = saveErrorRecord(error);
       this.onError(error);
     } finally {
       draft.saving = false;
-      buttonElement.disabled = !draft.dirty;
       this.renderNotice(this.key(cap.name, entry));
+      this.notify(cap, entry, draft.dirty);
     }
   }
 }

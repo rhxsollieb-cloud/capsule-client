@@ -2,15 +2,23 @@ import { action } from "./api.mjs";
 import { node, replace, shortCommit, timeLabel } from "./dom.mjs";
 
 const labels = { pending: "排队中", running: "处理中", succeeded: "已完成", failed: "失败", conflict: "版本冲突" };
-const typeLabels = { create: "创建", write: "写入", metadata: "属性", revert: "回撤" };
+const typeLabels = { create: "创建", write: "写入", metadata: "属性", revert: "回撤", delete: "清除", organize: "位置组织" };
+const needsAttention = (event) => ["failed", "conflict"].includes(event.status) || Boolean(event.error);
 
 export class EventPanel {
-  constructor({ onError, onReverted }) {
+  constructor({ onError, onReverted, onDeleted, onAttention, onVisibility }) {
     this.element = document.getElementById("panel");
     this.body = document.getElementById("panel-body");
     this.mode = "events";
     this.onError = onError;
     this.onReverted = onReverted;
+    this.onDeleted = onDeleted;
+    this.watched = new Map();
+    this.finishing = new Set();
+    this.onAttention = onAttention;
+    this.onVisibility = onVisibility;
+    this.seen = new Set();
+    this.events = [];
     this.polling = false;
     document.getElementById("panel-events").addEventListener("click", () => this.open("events"));
     document.getElementById("panel-output").addEventListener("click", () => this.open("output"));
@@ -20,17 +28,21 @@ export class EventPanel {
   open(mode = "events") {
     this.element.classList.remove("hidden");
     this.mode = mode;
-    document.getElementById("activity-events").classList.add("active");
+    if (mode === "events") {
+      this.events.filter(needsAttention).forEach((event) => this.seen.add(event.id));
+      this.onAttention?.(0);
+    }
+    this.onVisibility?.(true);
     document.getElementById("panel-events").classList.toggle("active", mode === "events");
     document.getElementById("panel-output").classList.toggle("active", mode === "output");
     this.refresh();
   }
   close() {
     this.element.classList.add("hidden");
-    document.getElementById("activity-events").classList.remove("active");
+    this.onVisibility?.(false);
   }
-  async refresh() {
-    if (this.mode === "output") {
+  async refresh({ eventsOnly = false, quiet = false } = {}) {
+    if (this.mode === "output" && !eventsOnly) {
       this.renderOutput();
       return;
     }
@@ -38,8 +50,15 @@ export class EventPanel {
     this.polling = true;
     try {
       const result = await action("events", { limit: 30 });
-      if (this.mode === "events") this.renderEvents(result.items);
-    } catch (error) { this.onError(error); }
+      this.events = result.items;
+      for (const event of result.items) await this.finish(event);
+      const listed = new Set(result.items.map((event) => event.id));
+      for (const id of this.watched.keys()) if (!listed.has(id)) await this.finish(await action("event", { id }));
+      const visible = this.mode === "events" && !this.element.classList.contains("hidden");
+      if (visible) result.items.filter(needsAttention).forEach((event) => this.seen.add(event.id));
+      this.onAttention?.(result.items.filter((event) => needsAttention(event) && !this.seen.has(event.id)).length);
+      if (visible) this.renderEvents(result.items);
+    } catch (error) { if (!quiet) this.onError(error); }
     finally { this.polling = false; }
   }
   renderEvents(events) {
@@ -77,6 +96,7 @@ export class EventPanel {
     replace(this.body, header, pre);
   }
   async watch(event) {
+    this.watched.set(event.id, event);
     this.open("events");
     let current = event;
     try {
@@ -85,16 +105,42 @@ export class EventPanel {
         current = await action("event", { id: event.id });
         if (!this.element.classList.contains("hidden") && this.mode === "events") await this.refresh();
       }
-      if (current.status === "succeeded") this.onReverted(current);
-      else throw new Error(`事件 ${current.id} ${labels[current.status] || current.status}：${current.error?.message || "请核对事件记录"}`);
+      await this.finish(current);
     } catch (error) {
+      this.refresh({ eventsOnly: true, quiet: true });
       this.onError(new Error(`${error.message} · 事件 ${event.id}，请查看事件状态，勿重复提交。`));
     }
     return current;
   }
+  async finish(event) {
+    if (!this.watched.has(event.id) || ["pending", "running"].includes(event.status)) return;
+    if (this.finishing.has(event.id)) return;
+    this.finishing.add(event.id);
+    try {
+      if (event.status === "succeeded") {
+        if (event.type === "delete") {
+          if (event.result?.removed !== true || event.result.name !== event.name) {
+            this.watched.delete(event.id);
+            this.onError(new Error(`清除事件 ${event.id} 的结果不完整，请核对原事件`));
+            return;
+          }
+          await this.onDeleted?.(event);
+        }
+        else if (event.type === "revert") await this.onReverted?.(event);
+      } else this.onError(new Error(`事件 ${event.id} ${labels[event.status] || event.status}：${event.error?.message || "请核对事件记录"}`));
+      this.watched.delete(event.id);
+    } finally { this.finishing.delete(event.id); }
+  }
   startPolling() {
+    this.refresh({ eventsOnly: true, quiet: true });
+    this.lastBackgroundPoll = Date.now();
     this.timer = setInterval(() => {
-      if (!this.element.classList.contains("hidden") && this.mode === "events") this.refresh();
+      const visible = !this.element.classList.contains("hidden") && this.mode === "events";
+      if (visible) this.refresh();
+      else if (Date.now() - this.lastBackgroundPoll >= 30000) {
+        this.lastBackgroundPoll = Date.now();
+        this.refresh({ eventsOnly: true, quiet: true });
+      }
     }, 3000);
   }
 }

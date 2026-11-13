@@ -67,7 +67,7 @@
 .kind-database, .kind-word { --type-color: var(--database); }
 .kind-excel { --type-color: var(--image); }
 .kind-file { --type-color: var(--text); }
-svg[class*="kind-"], .node-icon, .cap-card-icon, .identity-icon, .container-icon { color: var(--type-color, var(--text)); }
+svg[class*="kind-"], .node-icon, .cap-card-icon { color: var(--type-color, var(--text)); }
 * { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; -webkit-font-smoothing: antialiased; }
 ::selection { color: var(--surface); background: var(--text); }

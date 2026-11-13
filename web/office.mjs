@@ -1,6 +1,5 @@
 import { action } from "./api.mjs";
-import { button, node, replace, shortCommit } from "./dom.mjs";
-import { downloadButton } from "./views.mjs";
+import { node, replace, shortCommit } from "./dom.mjs";
 import { loadOfficeApi } from "./office-loader.mjs";
 import { OfficeState } from "./office-state.mjs";
 
@@ -11,31 +10,46 @@ export class OfficeView {
     Object.assign(this, { container, cap, entry, isCurrent, onError, onSaved, onDirty, onReload });
     this.state = new OfficeState(cap);
     this.wrapper = node("div", "onlyoffice-view");
-    this.toolbar = node("div", "reading-toolbar onlyoffice-toolbar");
-    this.saveButton = button("保存到 cap", () => this.save(), "button primary");
-    this.saveButton.title = "确认文档服务中的修改已写入cap版本，完成后再切换内容";
-    this.reloadButton = button("重新打开当前版本", () => this.onReload(), "button ghost");
-    this.note = node("span", "onlyoffice-note", "正在连接文档服务…");
-    this.toolbar.append(node("span", "content-eyebrow", "ONLYOFFICE DOCS"), this.note, this.saveButton, this.reloadButton, downloadButton(cap.name, entry));
     this.notice = node("div", "onlyoffice-notice hidden");
     this.recovery = node("a", "button secondary hidden", "下载冲突恢复原件");
     this.stage = node("div", "onlyoffice-stage");
     this.mount = node("div", "onlyoffice-mount");
     this.mount.id = `office-${crypto.randomUUID()}`;
     this.stage.append(this.mount);
-    this.wrapper.append(this.toolbar, this.notice, this.recovery, this.stage,
-      node("p", "onlyoffice-hint", "编辑器保存后，使用“保存到 cap”确认版本提交；未完成的修改在切换前会继续保留。"));
+    this.wrapper.append(this.notice, this.recovery, this.stage);
     replace(container, this.wrapper);
     this.open();
   }
   hasDirty() { return this.state.hasDirty(); }
   active() { return !this.disposed && this.isCurrent(); }
+  controlsInfo() {
+    const sessionStatus = this.state.session?.status;
+    const failed = ["conflict", "error", "closed"].includes(sessionStatus);
+    let state = "clean";
+    let statusText = "已保存";
+    if (sessionStatus === "conflict" || this.state.remote) { state = "conflict"; statusText = "版本冲突"; }
+    else if (this.localError || ["error", "closed"].includes(sessionStatus)) { state = "error"; statusText = sessionStatus === "closed" ? "会话已结束" : "保存失败"; }
+    else if (this.state.saving || this.collecting) { state = "saving"; statusText = this.collecting ? "等待输入收集" : "保存中"; }
+    else if (!this.ready) { state = "loading"; statusText = "正在打开"; }
+    else if (this.state.dirty) { state = "dirty"; statusText = "未保存"; }
+    const moreItems = [{
+      label: "重新打开当前版本", disabled: this.state.saving || this.collecting,
+      action: () => { if (this.active()) this.onReload?.(); },
+    }];
+    if (this.state.session?.recoveryAvailable) moreItems.push({
+      label: "下载恢复原件", icon: "download",
+      action: () => { if (this.active()) this.recovery.click(); },
+    });
+    return {
+      state, statusText,
+      detail: `${statusText} · ${shortCommit(this.state.cap.commit)}${this.localError ? ` · ${this.localError.message}` : ""}`,
+      helpText: "编辑器先将变化收集到文档服务。使用保存命令确认知识库版本提交；未完成的修改在切换前会继续保留。",
+      canSave: Boolean(this.ready && !this.state.saving && !this.collecting && this.state.dirty && !failed),
+      save: () => this.active() ? this.save() : false,
+      moreItems,
+    };
+  }
   controls() {
-    this.saveButton.disabled = !this.ready || this.state.saving || !this.state.dirty || ["conflict", "error", "closed"].includes(this.state.session?.status);
-    this.reloadButton.disabled = this.state.saving;
-    if (this.state.saving) this.note.textContent = "正在保存，等待 cap 提交确认…";
-    else if (this.state.dirty) this.note.textContent = `有未保存修改 · 基于 ${shortCommit(this.state.cap.commit)}`;
-    else if (this.ready) this.note.textContent = `已保存 · ${shortCommit(this.state.cap.commit)}`;
     if (this.state.remote && !["conflict", "error"].includes(this.state.session?.status)) this.message("cap已有外部新版本。当前编辑会话已保留，保存将核对原版本。");
     this.onDirty?.();
   }
@@ -59,7 +73,7 @@ export class OfficeView {
       this.editor = new api.DocEditor(this.mount.id, {
         ...session.config,
         events: {
-          onDocumentReady: () => { if (this.active()) { this.ready = true; this.message(""); this.controls(); } },
+          onDocumentReady: () => { if (this.active()) { this.ready = true; this.localError = null; this.message(""); this.controls(); } },
           onDocumentStateChange: ({ data }) => { if (this.active()) { this.state.changed(data === true); this.controls(); } },
           onError: ({ data }) => { if (this.active()) this.fail(new Error(data?.errorDescription || `文档编辑器错误 ${data?.errorCode || ""}`)); },
           onRequestRefreshFile: () => { if (this.active()) this.message("此编辑会话已结束，请保存或下载当前内容后重新打开。"); },
@@ -68,22 +82,27 @@ export class OfficeView {
       this.pollTimer = setInterval(() => this.poll(), 2000);
     } catch (error) {
       if (!this.active()) return;
-      this.note.textContent = this.available ? "文档未能打开" : "文档服务未就绪";
+      this.localError = error;
       this.message(error.message, true);
       this.stage.append(node("p", "onlyoffice-unavailable", this.available
         ? "请核对原件格式和版本后重新打开。原件仍可下载查看。"
         : "请启动ONLYOFFICE Docs后点击“重新打开当前版本”。原件仍可下载查看。"));
       this.onError(error);
+      this.controls();
     }
   }
   receive(session) {
     const previousVersion = this.state.saveVersion;
     this.state.receive(session);
+    if (session.saveVersion > previousVersion && !["conflict", "error"].includes(session.status)) {
+      this.localError = null;
+      this.message("");
+    }
     if (session.result && session.saveVersion > previousVersion) this.onSaved?.(session.result);
     if (session.recoveryAvailable) {
       this.recovery.href = `/ui/office/recovery?${new URLSearchParams({ id: session.id })}`;
-      this.recovery.classList.remove("hidden");
     }
+    this.recovery.classList.toggle("hidden", !session.recoveryAvailable || !["conflict", "error", "closed"].includes(session.status));
     if (["conflict", "error"].includes(session.status)) this.message(session.error?.message || "保存未完成，编辑结果已保留，请下载恢复原件后核对。", true);
     else if (session.status === "closed") this.message("编辑会话已结束，可重新打开当前版本。");
     this.controls();
@@ -108,10 +127,12 @@ export class OfficeView {
   async savePending() {
     const collectedDeadline = Date.now() + 20000;
     while (!this.state.collected && this.active() && Date.now() < collectedDeadline) {
-      this.note.textContent = "等待编辑器收集当前修改…";
+      this.collecting = true;
+      this.controls();
       await delay(150);
     }
-    if (!this.active() || !this.state.beginSave()) return false;
+    this.collecting = false;
+    if (!this.active() || !this.state.beginSave()) { this.controls(); return false; }
     this.controls();
     try {
       this.receive(await action("office-save", { id: this.session.id }));
@@ -158,7 +179,7 @@ export class OfficeView {
     this.controls();
     this.poll();
   }
-  fail(error) { this.message(error.message, true); this.onError(error); }
+  fail(error) { this.localError = error; this.message(error.message, true); this.onError(error); this.controls(); }
   destroy() {
     this.disposed = true;
     clearInterval(this.pollTimer);

@@ -139,7 +139,7 @@ export class NativeNavigator {
       for (const [mode, label] of [["tables", "数据表"], ["files", "文件"]])
         tabs.append(button(label, () => this.setMode(mode), `tab-button${this.mode === mode ? " active" : ""}`));
       children.push(tabs);
-    } else children.push(node("p", "native-caption", this.cap.kind === "markdown" ? "README.md 与自有媒体附件" : "此 cap 的原生文件"));
+    }
     const list = node("div", "native-scroll");
     if (this.error) list.append(node("p", "tree-message error-message", this.error));
     else if (this.mode === "tables") {
@@ -157,7 +157,7 @@ export class NativeNavigator {
       more.disabled = this.busy;
       list.append(more);
     }
-    children.push(list, node("div", "sidebar-footer", this.mode === "tables" ? "SQLite 数据表" : "独立内容 · 统一版本"));
+    children.push(list);
     replace(this.element, ...children);
     if (focused) [...this.element.querySelectorAll(".native-entry")].find((element) => element.dataset.path === focused)?.focus({ preventScroll: true });
   }

@@ -82,9 +82,7 @@ export class Dialogs {
     path.value = parent || "/";
     const original = node("input", "file-input");
     original.type = "file";
-    const entry = node("input", "property-input");
-    entry.value = "main.mjs";
-    const entryField = formField("Node 运行入口", entry);
+    const entryField = node("p", "property-note", "代码以 Skill 创建，包含 SKILL.md 和独立 scripts/cli.mjs。需要协作页面时再添加 scripts/ui.mjs。");
     const fileField = formField("原件（可选）", original);
     const update = () => {
       entryField.classList.toggle("hidden", kind.value !== "code");
@@ -112,7 +110,6 @@ export class Dialogs {
       try {
         cap = await action("create", {
           name: name.value.trim(), kind: kind.value, description: description.value,
-          ...(kind.value === "code" ? { runtime: { engine: "node", entry: entry.value } } : {}),
         });
         if (original.files[0] && !directoryKinds.has(kind.value)) {
           submit.textContent = "上传原件…";
@@ -160,7 +157,7 @@ export class Dialogs {
     this.show();
   }
   run(cap, hasDraft) {
-    const view = this.form("在本地运行代码");
+    const view = this.form("在本地运行 Skill CLI");
     view.fields.append(node("strong", "", cap.name), node("p", "mono muted", `${cap.runtime?.engine || "node"} · ${cap.runtime?.entry || "未声明入口"}`));
     const args = node("textarea", "property-input");
     args.rows = 4;

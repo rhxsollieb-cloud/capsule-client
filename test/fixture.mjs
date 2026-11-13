@@ -12,6 +12,9 @@ export async function repositoryFixture(t, source) {
   await git(["config", "user.name", "Capsule test"], repository);
   await git(["config", "user.email", "capsule-test@localhost"], repository);
   await writeFile(join(repository, "main.mjs"), source);
+  await mkdir(join(repository, "scripts"));
+  await writeFile(join(repository, "SKILL.md"), "---\nname: test-tool\ndescription: Run the test tool through its standalone CLI.\n---\n\n# Test tool\n");
+  await writeFile(join(repository, "scripts", "cli.mjs"), 'import "../main.mjs";\n');
   await git(["add", "."], repository);
   await git(["commit", "-m", "initial"], repository);
   const record = {
@@ -20,7 +23,7 @@ export async function repositoryFixture(t, source) {
     description: "",
     commit: await git(["rev-parse", "HEAD"], repository),
     token: "first",
-    runtime: { engine: "node", entry: "main.mjs" },
+    runtime: { engine: "node", entry: "scripts/cli.mjs" },
   };
   const api = {
     config: { serverUrl: "http://test", home: join(directory, "client"), token: "" },

@@ -1,0 +1,20 @@
+.library-header { gap: 6px; min-height: 34px; padding: 0 5px; flex: 0 0 34px; }
+.library-mark { display: grid; place-items: center; width: 23px; height: 23px; flex: 0 0 23px; padding: 0; border: 1px solid var(--text); border-radius: 4px; background: var(--text); color: var(--surface); box-shadow: 0 1px 0 var(--shadow), inset 0 1px var(--highlight); }
+.library-mark:hover { box-shadow: inset 0 1px 3px var(--shadow); }
+.library-mark svg { width: 14px; height: 14px; }
+.library-filter { flex: 1; min-width: 0; width: 100%; height: 25px; padding: 3px 7px; font-size: 11px; }
+.library-header .icon-button { width: 24px; height: 26px; flex: 0 0 24px; }
+.library-header .icon-button svg { width: 14px; height: 14px; }
+.library-menu-button { position: relative; }
+.attention-badge { position: absolute; right: -4px; top: -4px; display: grid; place-items: center; min-width: 13px; height: 13px; padding: 0 2px; border: 1px solid var(--error); border-radius: 3px; background: var(--error-surface); color: var(--error); font-size: 8px; line-height: 1; }
+.connection-alert { flex: 0 0 auto; min-height: 28px; padding: 5px 9px; border: 0; border-bottom: 1px solid var(--error); background: var(--error-surface); color: var(--error); font-size: 10px; text-align: left; }
+.connection-alert:hover { text-decoration: underline; }
+.shell-dialog-content { padding: 20px; }
+.shell-dialog-content h2 { margin: 0 0 15px; font-size: 15px; }
+.shell-dialog-content p { margin: 10px 0; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.shell-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+@media (pointer: coarse) {
+  .library-header { min-height: 38px; flex-basis: 38px; }
+  .library-header .icon-button, .library-filter { min-height: 30px; }
+  .library-mark { width: 27px; height: 27px; flex-basis: 27px; }
+}

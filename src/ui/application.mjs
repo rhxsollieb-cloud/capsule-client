@@ -9,6 +9,7 @@ import { performAction } from "./actions.mjs";
 import { staticFile } from "./static.mjs";
 import { sendMedia, uploadMedia } from "./media.mjs";
 import { officeContentPolicy, sendOfficeRecovery } from "./office.mjs";
+import { SkillManager } from "../skills/manager.mjs";
 
 export function createUiApplication({
   config,
@@ -17,6 +18,7 @@ export function createUiApplication({
   webRoot = fileURLToPath(new URL("../../web/", import.meta.url)),
   maxUploadBytes = 8 * 1024 * 1024 * 1024,
   api = new ApiClient(config),
+  skills = new SkillManager(api),
 } = {}) {
   assertLoopback(host);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw uiError("界面端口无效");
@@ -34,7 +36,7 @@ export function createUiApplication({
       if (url.pathname === "/ui/action") {
         if (request.method !== "POST") throw uiError("该接口需要POST", 405);
         checkSession(request, csrfToken);
-        return json(response, 200, await performAction(api, await requestJson(request)));
+        return json(response, 200, await performAction(api, await requestJson(request), { skills }));
       }
       if (url.pathname === "/ui/upload") {
         if (request.method !== "PUT") throw uiError("该接口需要PUT", 405);
@@ -74,8 +76,11 @@ export function createUiApplication({
       return this;
     },
     async close() {
-      if (server.listening)
-        await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      try { await skills.close?.(); }
+      finally {
+        if (server.listening)
+          await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      }
     },
   };
 }

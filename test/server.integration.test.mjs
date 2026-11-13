@@ -18,30 +18,31 @@ test("真实服务端与CLI完成写入、挂载、版本同步和本地执行",
   assert.equal(parent.name, "工具");
   await cli("mount", "工具", "/工具");
 
-  const original = await cli("create", "报价工具", "--kind", "code", "--engine", "node", "--entry", "main.mjs");
+  const original = await cli("create", "报价工具", "--kind", "code", "--engine", "node", "--entry", "scripts/cli.mjs");
   assert.equal(original.kind, "code");
   const source = join(directory, "main.mjs");
   await writeFile(source, "console.log(process.argv.slice(2).map(Number).reduce((a, b) => a + b, 0));\n");
-  const written = await cli("put", "报价工具", "main.mjs", source, "--token", original.token);
+  const written = await cli("put", "报价工具", "scripts/cli.mjs", source, "--token", original.token);
   assert.notEqual(written.commit, original.commit);
   assert.equal(written.name, original.name);
   const codeRoot = join(directory, "server", "capsules", original.name);
-  assert.equal((await stat(join(codeRoot, "main.mjs"))).isFile(), true);
+  assert.equal((await stat(join(codeRoot, "scripts", "cli.mjs"))).isFile(), true);
+  assert.equal((await stat(join(codeRoot, "SKILL.md"))).isFile(), true);
   assert.equal(existsSync(join(codeRoot, "cap.json")), false);
   assert.equal(existsSync(join(codeRoot, "files")), false);
   const entries = await cli("entries", "报价工具");
-  assert.ok(entries.items.some((entry) => entry.path === "main.mjs"));
+  assert.ok(entries.items.some((entry) => entry.path === "scripts/cli.mjs"));
 
   await cli("mount", "报价工具", "/工具/报价工具");
   const tree = await cli("ls", "/工具");
   assert.equal(tree.items.length, 1);
   assert.equal(tree.items[0].name, "报价工具");
 
-  const body = await cli("read", "报价工具", "main.mjs", "--from", "1", "--limit", "1");
+  const body = await cli("read", "报价工具", "scripts/cli.mjs", "--from", "1", "--limit", "1");
   assert.match(body.body, /console\.log/);
   assert.equal(body.lines.from, 1);
   await assert.rejects(
-    cli("put", "报价工具", "main.mjs", source, "--token", original.token),
+    cli("put", "报价工具", "scripts/cli.mjs", source, "--token", original.token),
     (error) => error.code !== 0 && /409|版本|变化|冲突|基线/.test(error.stderr),
   );
 
@@ -53,7 +54,7 @@ test("真实服务端与CLI完成写入、挂载、版本同步和本地执行",
   assert.equal(executed.stdout.trim(), "5");
 
   await writeFile(source, "console.log('upgraded');\n");
-  const upgraded = await cli("put", "报价工具", "main.mjs", source, "--token", written.token);
+  const upgraded = await cli("put", "报价工具", "scripts/cli.mjs", source, "--token", written.token);
   const nextRun = await cli("run", "报价工具");
   assert.equal(nextRun.commit, upgraded.commit);
   assert.notEqual(nextRun.commit, executed.commit);
@@ -61,7 +62,11 @@ test("真实服务端与CLI完成写入、挂载、版本同步和本地执行",
   const alternateSource = join(directory, "alternate.mjs");
   await writeFile(alternateSource, "console.log('alternate runtime');\n");
   const alternate = await cli("put", "报价工具", "alternate.mjs", alternateSource, "--token", upgraded.token);
-  const metadata = await cli("update", "报价工具", "--engine", "node", "--entry", "alternate.mjs", "--token", alternate.token);
+  await assert.rejects(cli("update", "报价工具", "--engine", "node", "--entry", "alternate.mjs", "--token", alternate.token), /已退役/u);
+  assert.equal((await cli("stat", original.name)).commit, alternate.commit);
+  await writeFile(source, 'import "../alternate.mjs";\n');
+  const wrapped = await cli("put", original.name, "scripts/cli.mjs", source, "--token", alternate.token);
+  const metadata = await cli("update", original.name, "--description", "新版skill", "--token", wrapped.token);
   assert.equal((await cli("run", "报价工具")).stdout.trim(), "alternate runtime");
   const reverted = await cli("revert", "报价工具", upgraded.commit, "--token", metadata.token);
   assert.equal(reverted.status, "succeeded");
@@ -70,7 +75,8 @@ test("真实服务端与CLI完成写入、挂载、版本同步和本地执行",
   assert.equal(restored.commit, reverted.result.commit);
   assert.notEqual(restored.commit, upgraded.commit);
   const historical = await cli("stat", "报价工具", "--commit", metadata.commit);
-  assert.equal(historical.runtime.entry, "alternate.mjs");
+  assert.equal(historical.runtime.entry, "scripts/cli.mjs");
+  assert.equal(historical.description, "新版skill");
   assert.equal(historical.token, undefined);
   const history = await cli("history", "报价工具");
   assert.ok(history.items.some((item) => item.commit === written.commit));
@@ -125,10 +131,10 @@ test("统一接口管理SQLite日志、超过64MiB的媒体和代码运行记录
   );
   assert.equal((await cli("stat", database.name)).commit, inserted.commit);
 
-  const code = await cli("create", "记录工具", "--kind", "code", "--engine", "node", "--entry", "main.mjs");
+  const code = await cli("create", "记录工具", "--kind", "code");
   const script = join(directory, "main.mjs");
   await writeFile(script, "console.log('database log');\n");
-  const written = await cli("put", code.name, "main.mjs", script, "--token", code.token);
+  const written = await cli("put", code.name, "scripts/cli.mjs", script, "--token", code.token);
   const result = await cli("run", code.name, "--log-cap", database.name);
   assert.equal(result.commit, written.commit);
   assert.equal(result.exitCode, 0);

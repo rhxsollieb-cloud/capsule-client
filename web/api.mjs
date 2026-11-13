@@ -5,7 +5,7 @@ async function payload(response) {
   try { value = await response.json(); } catch { value = {}; }
   if (!response.ok) {
     const error = new Error(value.error || `请求失败（${response.status}）`);
-    Object.assign(error, { status: response.status, code: value.code, eventId: value.eventId, result: value.result });
+    Object.assign(error, { status: response.status, code: value.code, eventId: value.eventId, result: value.result, uncertain: value.uncertain });
     throw error;
   }
   return value;
@@ -17,11 +17,13 @@ export async function initialize() {
   return session;
 }
 
-export async function action(name, fields = {}) {
+export async function action(name, fields = {}, { signal, keepalive = false } = {}) {
   return payload(await fetch("/ui/action", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Capsule-Session": csrfToken },
     body: JSON.stringify({ action: name, ...fields }),
+    ...(signal ? { signal } : {}),
+    ...(keepalive ? { keepalive: true } : {}),
   }));
 }
 
@@ -42,12 +44,12 @@ export async function upload(name, entry, file, token) {
   }));
 }
 
-export async function readText(name, entry, isCurrent) {
+async function readPages(operation, name, entry, isCurrent) {
   const parts = [];
   let from = 1;
   let record;
   do {
-    const next = await action("read", { name, entry, from, limit: 10000 });
+    const next = await action(operation, { name, ...(entry === undefined ? {} : { entry }), from, limit: 10000 });
     if (!isCurrent()) return null;
     if (record && next.token !== record.token)
       throw new Error("读取期间内容已变化，请刷新后重试；已有草稿保留。");
@@ -57,3 +59,6 @@ export async function readText(name, entry, isCurrent) {
   } while (from !== null && from !== undefined);
   return { ...record, body: parts.join("\n") };
 }
+
+export function readText(name, entry, isCurrent) { return readPages("read", name, entry, isCurrent); }
+export function readDetails(name, isCurrent) { return readPages("details", name, undefined, isCurrent); }

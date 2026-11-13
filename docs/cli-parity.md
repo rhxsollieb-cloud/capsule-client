@@ -1,0 +1,68 @@
+# CLI对标与职责
+
+本表以VideoSeed的公开CLI帮助、resources分层帮助及业务服务职责为参照，描述当前知识库CLI的覆盖与边界。目标是人在界面与Agent在CLI中使用相同知识库语义，视频创作专用能力另列范围。
+
+## 覆盖表
+
+| 能力 | 当前覆盖 | 边界 |
+| --- | --- | --- |
+| cap创建、概要、正文、原件、详述与清除 | create/stat/update/read/put/get/details/write-details/removal/delete | 实体token和挂载token分开；清除预览后入队，已清除cap不能用revert恢复 |
+| 虚拟位置 | ls/mount/position/move/unmount/where | where列出实体全部挂载；移动作用于位置子树，原件不跟随虚拟路径搬动 |
+| 位置批量规划 | organize inspect/dry-run/apply/receipt | 仅mount/move/unmount；顺序规划依赖，同一目录事务提交。没有把多cap内容创建/更新冒充同一原子事务 |
+| 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
+| 缓存复用 | sync、run及Skill注册共享跨进程缓存锁 | 同提交与完整本地对象复用；新版本可增量下载，changed只表示checkout变化。默认等锁30秒，CACHE_BUSY及异常锁见[缓存架构](architecture.md#同步与运行) |
+| 渐进读取 | read/details行范围，list/entries/query分页，fields/raw/max-chars/out | 保留token与续读；字段省略和预算省略明确可见，不把摘录当完整正文 |
+| 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
+| 精确文字修改 | edit | 全部分页需同一原token；0匹配失败，多匹配显式all；默认详述，显式路径通过原件文本接口写回 |
+| 管道输入 | 正文及JSON文件参数接受- | 严格UTF-8，默认最多1MiB，拒绝NUL；二进制原件继续使用流式put/get |
+| 人类和机器帮助 | 按组/命令help及help --json | 同一catalog派生arity/options/help/group/handler；未知原型属性不会作为命令 |
+| 离线规范说明 | guide、guide data、guide skills | 直接按行读取本包维护的规范正文，保留范围及续读；不联网、不初始化工作区，不冒称远端实时协商 |
+| 本机诊断 | doctor/paths | paths不创建目录、不联网，只显示客户端工作区；不返回或猜测远端原件真实文件系统路径 |
+| 胶囊活动 | activity 名称 | 只读查询全部未过期会话、未完成事件、Office及队列状态；CLI不按tab排除自身，不注册心跳，会话数不是人数，提示不是锁 |
+| Office与数据库 | 独立Office会话与提取/批处理、SQLite查询/表格写入 | 复用对应业务模块，格式与保存边界由Office及数据库说明维护 |
+| Skill | 固定CLI、精确提交运行、本机注册及可选协作界面 | 依赖与工具业务归Skill自身，客户端不假定仅支持Node内置依赖，不自动安装依赖 |
+
+## 命令与共享操作
+
+src/commands/catalog/按胶囊、正文、数据库、位置、版本、Office、Skill、诊断划分声明；每条只有一份名称、参数类型/范围、必需标记、位置参数数量、帮助、组和处理器归属。catalog初始化拒绝重名。specification和help投影同一声明，dispatch只选择业务处理器；跨参数依赖保留在validation。
+
+CLI把位置参数和文件/标准输入转换成规范对象，src/operations/负责发现、位置组织、活动和文字替换等协议操作，BFF复用这些操作。Skill管理命令经专门本机通道调用SkillManager；其余CLI业务不依赖BFF action分发，也不直接修改服务端目录或登记SQLite。服务端继续负责权限、最终版本校验和持久事务。
+
+`capsule help`先列能力组，`capsule help content`或`capsule help read`再展开；追加--json返回机器声明。帮助在解析配置与连接服务前完成，不触发业务初始化。
+
+guide无主题先列索引，再按data/skills展开项目模型和Skill宿主约定。正文来自docs/data-format.md与docs/skills.md，不在CLI复制规范。仅白名单主题可读，路径相对模块定位；默认60行，最多200行，按lines.nextLine或next续读。guideVersion标识指南响应格式，scope=client-bundled标明随客户端发布；没有cap token。正文支持raw，--fields仍保留来源与续读。guide不联网、不解析连接配置、不初始化工作区；它不说明远端当前版本或本机Skill是否运行。
+
+## 输入、输出和失败
+
+input.mjs共用文件与标准输入读取，按实际读取字节限制，普通文件预检与流式上限同时执行，UTF-8错误不替换为乱码。文字BOM与换行保留，JSON输入允许BOM。原件put/get仍走流式传输，不受文字输入格式替代。
+
+output.mjs默认JSON不改变小结果结构；字段选择后保留身份与版本/续读，页面预算从末尾减少完整记录并重算游标，正文按整行减少。不能安全分割的结果标记dataOmitted；具备行/候选游标时保留重试起点，不跳过未输出内容。run等结果没有stdout续读游标，不能通过分页取回被省略的输出。必要回执本身过大时整字段省略并记录omittedFields，不切断token或事件ID。read/details与guide主题的--raw输出所选正文，不附JSON或额外换行；超预算报错，不输出半份正文。正文行结束符按读取接口归一化，原件字节应通过get取得。
+
+--out在执行前检查目标不存在，完成后以同目录临时文件和hardlink发布所选字段的完整JSON，不覆盖既有文件、不留半份JSON；它不自动读取剩余页。输出失败不等于业务未执行，应先核对回执。run会尝试把结果保存到client.sqlite，本机日志失败会有logError，不能保证结果已持久化；事前可用--out，不能为取更多stdout重跑有副作用的Skill。
+
+默认stdout为JSON结果/必要事件回执，stderr为宿主异常诊断。--json-errors在捕获宿主异常时输出机器错误，保留HTTP status、code、eventId及uncertain/unknownResult。Skill子进程非零或logError仍返回普通run回执并非零退出，不自动包装error，也不代表没有执行。已知CAPSULE_TOKEN在配置前参数错误及宿主错误输出中隐藏。run的--之后原样交给Skill，不把Skill的--help或--json-errors当宿主参数。
+
+事件等待错误在已有有效ID时保留eventId：已知failed/conflict透传事件自身error的status/code，保持确定失败；等待超时、轮询失败、无效回执或无效成功结果分别返回EVENT_WAIT_TIMEOUT、EVENT_POLL_FAILED、EVENT_RECEIPT_INVALID、EVENT_RESULT_INVALID，并标记uncertain。最后收到的回执若存在则放在result中，其有效性仍需按错误判断，不能把未知等待结果当作未执行而重放。
+
+## 搜索与组织游标
+
+search的total为经过path/kind/query筛选的候选cap数，offset/nextOffset同样按候选计数；scanned说明本页完成处理的候选范围，returned为当前输出命中数。全局字节预算不足以完成某cap时，该cap的部分摘录不输出，nextOffset保留该候选以便次页重新检查。每cap匹配和位置展示另有上限，matchesTruncated、positionsTruncated、incomplete及其next建议显示实际覆盖边界。incomplete.next是单cap继续核对建议，不是全局游标。`search --query`只筛概要，不展开正文；`search --text`不扫描SQLite原件、媒体或其它二进制内容。
+
+组织计划形如：
+
+```json
+{"version":1,"baseline":"TOKEN","operations":[
+  {"operation":"unmount","path":"/旧主题.md/正文.txt"},
+  {"operation":"mount","name":"正文.txt","path":"/新主题.md/正文.txt"}
+]}
+```
+
+dry-run和apply使用同一规划器及基线校验，apply的offset必须为0。提交回执只读续查，不通过重放计划翻页。组织原子性仅涵盖顶层目录SQLite的位置变更，不涉及跨cap Git或正文事务。
+
+## 仍未实现及不适用
+
+没有完整全库备份/恢复CLI。每cap Git bundle、本机缓存或单文件下载不能覆盖全库catalog、全部cap原件/Git、挂载、事件及恢复资料的一致快照。完整备份需要单独的快照与实际恢复验证，不能仅复制活动SQLite就声称一致。
+
+尚未实现cap复制、改名、通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查已登记挂载，不把挂载推断为来源或共享数据。复制若后续实现，应生成独立cap内容与Git。
+
+视频生成、时间轴组合、混音、模型资产、供应商作业恢复与达芬奇交接属于VideoSeed领域能力，不作为知识库CLI缺口。机器JSON帮助和稳定结构化错误是本项目增强；没有声称VideoSeed已有同名机器接口或所有领域能力均已1:1迁移。

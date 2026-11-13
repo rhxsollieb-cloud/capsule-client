@@ -4,6 +4,15 @@ import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+async function jsonPayload(response, mutating, redact) {
+  try { return await response.json(); }
+  catch (cause) {
+    throw Object.assign(new Error(redact(`服务端响应不是有效JSON${mutating ? "；写入结果未确认，请查询实际状态，勿重复提交" : ""}`), { cause }), {
+      status: 502, code: "INVALID_RESPONSE", ...(mutating ? { uncertain: true } : {}),
+    });
+  }
+}
+
 export class ApiClient {
   constructor(config, fetcher = fetch) {
     this.config = config;
@@ -22,11 +31,24 @@ export class ApiClient {
   async response(path, init = {}) {
     const headers = new Headers(init.headers);
     if (this.config.token) headers.set("Authorization", `Bearer ${this.config.token}`);
-    const response = await this.fetcher(this.config.serverUrl + path, {
-      ...init,
-      headers,
-      signal: init.signal || AbortSignal.timeout(30000),
-    });
+    const mutating = !["GET", "HEAD"].includes(init.method || "GET");
+    let response;
+    try {
+      response = await this.fetcher(this.config.serverUrl + path, {
+        ...init,
+        redirect: "manual",
+        headers,
+        signal: init.signal || AbortSignal.timeout(30000),
+      });
+    } catch (cause) {
+      throw Object.assign(new Error(this.redact(`${cause.message}${mutating ? "；写入结果未确认，请先查询实际状态，勿重复提交" : ""}`), { cause }), {
+        code: mutating ? "RESULT_UNKNOWN" : "NETWORK_ERROR", ...(mutating ? { uncertain: true } : {}),
+      });
+    }
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw Object.assign(new Error("服务端返回了重定向，客户端只访问已配置的根地址；写入结果请先查询核对，勿重复提交"), { status: 502, code: "SERVER_REDIRECT", ...(mutating ? { uncertain: true } : {}) });
+    }
     if (!response.ok) {
       let details;
       try {
@@ -57,7 +79,7 @@ export class ApiClient {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    return response.json();
+    return jsonPayload(response, !["GET", "HEAD"].includes(method), (value) => this.redact(value));
   }
   async upload(name, entry, file, token) {
     const info = await stat(file);
@@ -75,10 +97,20 @@ export class ApiClient {
         duplex: "half",
         signal: AbortSignal.timeout(30 * 60 * 1000),
       });
-      return await response.json();
+      return await jsonPayload(response, true, (value) => this.redact(value));
     } finally {
       source.destroy();
     }
+  }
+  async putText(name, entry, body, token) {
+    if (typeof body !== "string" || body.includes("\0")) throw new Error("正文需要不含空字符的UTF-8文本");
+    const bytes = Buffer.from(body, "utf8");
+    const response = await this.response(this.path(name, "content", { entry }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream", "Content-Length": String(bytes.length), "If-Match": token },
+      body: bytes,
+    });
+    return jsonPayload(response, true, (value) => this.redact(value));
   }
   async download(path, file) {
     const destination = resolve(file);

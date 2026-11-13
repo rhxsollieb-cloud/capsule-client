@@ -13,6 +13,7 @@ export function configuration(env = process.env) {
     throw new Error("CAPSULE_SERVER_URL 需为服务端根地址");
   return {
     serverUrl: url.origin,
+    clientUrl: localClientOrigin(env.CAPSULE_CLIENT_URL || `http://127.0.0.1:${env.CAPSULE_UI_PORT || 5183}`),
     officeEditorUrl: officeOrigin(env.CAPSULE_ONLYOFFICE_URL || "http://127.0.0.1:8081"),
     token: env.CAPSULE_TOKEN || "",
     home: resolve(
@@ -20,6 +21,13 @@ export function configuration(env = process.env) {
         fileURLToPath(new URL("../.local", import.meta.url)),
     ),
   };
+}
+
+export function localClientOrigin(value) {
+  const url = new URL(value);
+  if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || url.username || url.password || url.search || url.hash || url.pathname !== "/")
+    throw new Error("CAPSULE_CLIENT_URL 必须是本机客户端 HTTP 根地址");
+  return url.origin;
 }
 
 export function officeOrigin(value) {

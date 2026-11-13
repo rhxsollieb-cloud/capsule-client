@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { capsuleName, entryPath } from "../system/paths.mjs";
+import { readJsonInput, readTextInput } from "./input.mjs";
 
 function parameters(value) {
   if (value === undefined) return undefined;
@@ -32,12 +32,12 @@ function queryInput(values) {
   };
 }
 
-async function writeInput(values) {
+async function writeInput(values, context) {
   if (values.body !== undefined) {
     return {
       token: values.token,
       ...(values.entry === undefined ? {} : { entry: entryPath(values.entry) }),
-      body: await readFile(values.body, "utf8"),
+      body: await readTextInput(values.body, context),
     };
   }
   let statements;
@@ -48,20 +48,20 @@ async function writeInput(values) {
       ...(bindings === undefined ? {} : { parameters: bindings }),
     }];
   } else {
-    statements = JSON.parse(await readFile(values.file, "utf8"));
+    statements = await readJsonInput(values.file, context);
     if (!Array.isArray(statements) || !statements.length)
       throw new Error("--file 需包含非空 statements JSON 数组");
   }
   return { token: values.token, statements };
 }
 
-export async function dataCommand(api, { command, positional, values }) {
+export async function dataCommand(api, { command, positional, values }, context) {
   const name = capsuleName(positional[0]);
   if (command === "get") {
     const entry = positional.length === 2 ? undefined : entryPath(positional[1]);
     const result = await api.download(api.path(name, "content", { entry }), positional.at(-1));
     return { name, entry, ...result };
   }
-  const input = command === "query" ? queryInput(values) : await writeInput(values);
+  const input = command === "query" ? queryInput(values) : await writeInput(values, context);
   return api.json(api.path(name, command), "POST", input);
 }

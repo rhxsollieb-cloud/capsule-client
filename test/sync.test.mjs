@@ -49,13 +49,19 @@ process.exitCode = 7;
   assert.equal(await git(["status", "--porcelain"], cached.repository), "");
 });
 
-test("运行器明确报告尚未提供的第三方依赖环境", async (t) => {
-  const { api, repository, record } = await repositoryFixture(t, "console.log('unused');\n");
+test("skill允许声明依赖，实际缺少模块时诊断且不自动安装", async (t) => {
+  const { api, repository, record, update } = await repositoryFixture(t, "console.log('unused');\n");
   await writeFile(join(repository, "package.json"), JSON.stringify({ dependencies: { example: "1.0.0" } }));
   await git(["add", "."], repository);
   await git(["commit", "-m", "dependency"], repository);
   record.commit = await git(["rev-parse", "HEAD"], repository);
-  await assert.rejects(runCapsule(api, "工具"), /第三方依赖/u);
+  assert.equal((await runCapsule(api, "工具")).exitCode, 0);
+  await update('import "capsule-deliberately-missing-module";\n');
+  const failed = await runCapsule(api, "工具");
+  assert.notEqual(failed.exitCode, 0);
+  assert.match(failed.stderr, /ERR_MODULE_NOT_FOUND/);
+  assert.match(failed.stderr, /不会自动安装/u);
+  assert.equal(existsSync(join(failed.directory, "work", "node_modules")), false);
 });
 
 test("Git 忽略的本地文件同样阻止缓存覆盖", async (t) => {

@@ -2,7 +2,6 @@
 .database-grid { flex: 1; min-height: 170px; overflow: hidden; }
 .database-table-title { font-weight: 650; margin-right: auto; }
 .database-note, .grid-hint { font-size: 10px; line-height: 1.7; }
-.grid-hint { padding: 8px 18px; margin: 0; border-bottom: 1px solid var(--border); background: var(--stripe); }
 .database-note { max-width: 330px; }
 .sql-disclosure > .button { margin: 0 14px 10px; }
 .database-grid.tabulator { color: var(--text); background: var(--surface); border: 0; font-family: inherit; font-size: 12px; }

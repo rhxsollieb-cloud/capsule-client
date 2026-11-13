@@ -19,10 +19,12 @@ npm start -- help
 | --- | --- | --- |
 | CAPSULE_SERVER_URL | http://127.0.0.1:5184 | 服务端地址 |
 | CAPSULE_TOKEN | 空 | 与服务端一致的认证值 |
-| CAPSULE_CLIENT_HOME | 项目.local | 本地缓存、工作目录和运行记录 |
+| CAPSULE_CLIENT_HOME | 安装目录/.local | 本地缓存、工作目录和运行记录 |
+| CAPSULE_UI_PORT | 5183 | 本地图形服务监听端口，也是默认客户端通道的端口 |
+| CAPSULE_CLIENT_URL | http://127.0.0.1:5183，跟随CAPSULE_UI_PORT | skill-*命令连接的本机HTTP根地址；不改变图形服务监听端口 |
 | CAPSULE_ONLYOFFICE_URL | http://127.0.0.1:8081 | 浏览器可访问的ONLYOFFICE Docs根地址，与服务端配置保持一致 |
 
-配置按环境变量传入。客户端路径根据项目目录定位，与命令当前目录无关。
+配置按环境变量传入。默认工作区随客户端安装位置定位；显式设置相对的CAPSULE_CLIENT_HOME时按启动目录解析，跨入口使用同一工作区应配置绝对路径。上传限额等图形服务配置见[界面说明](docs/ui.md)。
 
 ## 图形工作台
 
@@ -32,58 +34,60 @@ npm start -- help
 npm run ui
 ```
 
-默认打开地址为`http://127.0.0.1:5183`，CAPSULE_UI_PORT可修改界面端口。界面通过本地回环服务调用现有客户端模块，服务端认证值保存在本地进程。浏览器的会话校验和同源检查保护写入、上传及工具运行入口。
+界面地址默认为`http://127.0.0.1:5183`，CAPSULE_UI_PORT可修改端口。界面通过本地回环服务调用现有客户端模块，服务端认证值保存在本地进程；浏览器使用本机会话校验和同源检查。
 
 已生成本机ONLYOFFICE连接配置时，先执行npm run build:web，再用`node --env-file=.local/ui.env src/ui/main.mjs`启动；CLI同样可用`node --env-file=.local/ui.env src/cli.mjs ...`读取本机认证配置。首次部署按[服务端部署说明](../capsule-server/docs/onlyoffice-deployment.md)执行runtime与connect脚本，密钥不需写入源码或命令参数。
 
-工作台沿用VideoSeed的硬塑料视觉风格，支持亮色和深色主题。知识库占第一列；选中目录cap后，第二列展开其原生文件，数据库可切换数据表与文件。中央按类型阅读、编辑和播放内容，最右侧显示上下文与可折叠属性。版本与回撤事件在底部查看。
+工作台沿用VideoSeed的硬塑料视觉风格，支持亮色和深色主题。知识库与目录内容使用双列导航，中央按类型阅读和编辑，属性按需弹出；内容标题承载保存、文件菜单及活动提示。布局、草稿、并发会话、断链和清除规则见[界面说明](docs/ui.md)。
 
-Markdown目录保存README.md和assets/附件，使用markdown-it与DOMPurify呈现同cap内的图片、音频和视频。新建默认为Markdown，普通text继续单文件保存。
+Markdown目录管理正文与自有附件；Office使用自托管ONLYOFFICE Docs网页编辑DOCX/XLSX/PPTX；SQLite业务表使用Tabulator网格。格式和保存边界分别见[数据规范](docs/data-format.md)、[Office网页编辑](docs/office.md)和[数据库表格](docs/database.md)。
 
-Office主入口使用自托管ONLYOFFICE Docs，直接在网页打开、编辑和保存DOCX、XLSX、PPTX原件。保存通过统一内容接口、原token和Git版本保护，活跃编辑会话不随后台刷新重建；冲突时保留编辑内容及恢复原件。数据库使用Tabulator网格与服务端官方SQLite驱动，支持保留草稿的单元格编辑。具体运行和保存边界见[Office网页编辑](docs/office.md)与[数据库表格](docs/database.md)。
-
-开发示例通过独立脚本种入，基础十个节点加目录Markdown、Word模板和可修改预算三个扩展示例。样例来源、生成方式及重复执行规则见[开发示例](docs/demo-data.md)。
-
-图形入口与浏览器模块分别位于src/ui/和web/。npm run ui自动构建本机依赖包，浏览器不请求CDN；也可单独执行npm run build:web。构建源码在browser/，生成的web/vendor/不纳入Git。接口边界见[图形客户端说明](docs/ui.md)。
+`npm run ui`先构建本机浏览器依赖，也可单独执行`npm run build:web`。web/vendor/为忽略的生成物，应用依赖不请求CDN。演示数据由独立脚本显式种入，来源、生成方式及重复执行规则见[开发示例](docs/demo-data.md)。
 
 ## Agent入口
 
-Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装短命令后可使用capsule。读取优先ls、stat、read和query，写入携当前token，运行代码使用run，回撤使用revert及event查询。
+Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装短命令后可使用capsule。先查范围，再展开正文；内容修改携当前token，运行代码使用run，回撤使用revert及event查询。名称、虚拟路径和原生entry的区别见[数据规范](docs/data-format.md)。
+
+帮助按capsules/content/database/mounts/versions/office/skills/system分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
+
+第一次接触胶囊时，先用`guide`列出说明主题，再用`guide data`了解数据模型、`guide skills`了解胶囊Skill与常规Skill的区别。指南直接按行读取本包维护的[数据规范](docs/data-format.md)和[Skill说明](docs/skills.md)，不联网、不解析连接配置、不初始化工作区。续读使用返回的lines.nextLine，也可用--raw取得所选说明正文；它解释本客户端约定，不代表远端实时协商或某个Skill当前状态。
 
 ```sh
 node src/cli.mjs ls /
+node src/cli.mjs help mounts --json
+node src/cli.mjs guide
+node src/cli.mjs guide skills --from 1 --limit 40 --raw
+node src/cli.mjs overview
+node src/cli.mjs where 产品说明.txt
 node src/cli.mjs read 产品说明.txt --from 1 --limit 20
+node src/cli.mjs search / --text 目标文字 --json-errors
+node src/cli.mjs activity 产品说明.txt
+node src/cli.mjs paths
 node src/cli.mjs run 求和工具 -- 2 3
 ```
 
-运行时先同步并核验指定Git提交，随后在客户端本地工作目录执行，记录进入client.sqlite。Agent也可在本地代码中复用ApiClient和运行模块。
+guide读取随包说明；health、stat、search、activity等查询实际服务端。activity只读列出全部未过期编辑会话、事件与Office状态，不发送心跳；会话数不是人数，占用提示不替代版本校验。
+
+重复同步复用本地完整提交，跨进程等待同一缓存锁；新版本可通过增量bundle减少旧历史和媒体的重复传输。changed表示本地checkout是否切换，不等于是否下载。缓存、注册Skill和独立运行副本各有生命周期；失败、锁异常和SQLite发布边界见[缓存架构](docs/architecture.md#同步与运行)。
+
+代码Skill使用SKILL.md和独立CLI，协作页面可选且纯本机运行。skill-register/status/start/stop经本机客户端稳定通道管理，Agent CLI与页面共享本机状态；无需协作时直接run，不启动页面。格式、就绪协议、升级及示例见[Skill说明](docs/skills.md)。
 
 ## 渐进读取
 
-```sh
-node src/cli.mjs health
-node src/cli.mjs list
-node src/cli.mjs list --kind database
-node src/cli.mjs ls /
-node src/cli.mjs stat 工具
-node src/cli.mjs entries 工具
-node src/cli.mjs read 工具 --from 1 --limit 20
-node src/cli.mjs preview 拍摄说明.docx
-node src/cli.mjs preview 资料包 office/预算.xlsx
-```
+list查询cap概要，ls展开虚拟位置，entries列举原生内容；read/details分页展开正文与详述。query用于实际文本或SQLite，preview只读提取docx/xlsx并保留提交和截断信息。按响应中的lines.nextLine或nextOffset续读，不把虚拟路径当原件路径。
 
-list按类别分页查询cap概要，ls展开虚拟位置，entries列举原生内容。单文件可直接read名称，目录指定相对路径。query处理文本或SQLite查询，write处理文本或数据库事务，输出保留范围和续读位置。preview只读解析docx/xlsx，并返回实际提交号与截断状态。
+输出默认预算12000字符，可用--fields、--max-chars或--out控制；read/details及guide主题正文支持--raw。正文与JSON文件参数接受`-`作为标准输入。truncated/dataOmitted代表省略，超长单行和搜索候选页的续读限制见[CLI说明](docs/cli-parity.md)。宿主异常可用--json-errors取得机器诊断；Skill非零退出仍返回run回执，不能视为未执行。
 
 ## 创建与写入
 
 ```sh
 node src/cli.mjs create 工具 --description 工具入口
 node src/cli.mjs mount 工具 /工具
-node src/cli.mjs create 求和工具 --kind code --engine node --entry main.mjs
+node src/cli.mjs create 求和工具 --kind code
 node src/cli.mjs stat 求和工具
 ```
 
-准备一个本地`main.mjs`。
+创建code会生成标准Skill骨架。准备一个本地`cli.mjs`替换其独立CLI。
 
 ```js
 console.log(process.argv.slice(2).map(Number).reduce((sum, value) => sum + value, 0));
@@ -92,7 +96,7 @@ console.log(process.argv.slice(2).map(Number).reduce((sum, value) => sum + value
 复制stat响应的token作为下条命令的TOKEN参数。
 
 ```sh
-node src/cli.mjs put 求和工具 main.mjs ./main.mjs --token TOKEN
+node src/cli.mjs put 求和工具 scripts/cli.mjs ./cli.mjs --token TOKEN
 node src/cli.mjs mount 求和工具 /工具/求和工具
 node src/cli.mjs history 求和工具
 node src/cli.mjs sync 求和工具
@@ -101,21 +105,13 @@ node src/cli.mjs run 求和工具 -- 2 3
 
 每次内容修改在原胶囊内形成新Git提交。再次运行时，客户端取得服务端当前提交，同步并核验后执行。run输出实际提交、退出码、stdout和stderr，工具失败时CLI返回非零。
 
-缓存提交、元数据快照和运行记录统一保存在客户端工作区的client.sqlite。工具从同步提交的原生根目录运行，运行声明取自该提交绑定的顶层元数据。当前开发阶段退出旧JSON状态和日志迁移逻辑，使用干净工作区。
+Git对象和缓存原件位于cache/，版本元数据、缓存头、Skill登记和运行记录由顶层client.sqlite维护。run从所选提交的独立work副本启动固定CLI，使用持久state；它不复用注册work中的依赖。工作目录、环境和直接CLI调用的区别见[Skill说明](docs/skills.md)。
 
 ## 单文件与元数据
 
-```sh
-node src/cli.mjs create 产品说明.txt --kind text --body ./说明.txt
-node src/cli.mjs read 产品说明.txt
-node src/cli.mjs put 产品说明.txt ./修订说明.txt --token TOKEN
-node src/cli.mjs get 产品说明.txt ./下载说明.txt
-node src/cli.mjs update 产品说明.txt --description 修订说明 --token CURRENT_TOKEN
-```
+单文件可直接按名称get/put；目录型内容使用原生entry。CLI create默认text，图形新建默认Markdown，两者均可显式选kind。Markdown、SQLite媒体区、统一详述来源和Skill形态见[数据规范](docs/data-format.md)，不在cap内建立第二份登记。
 
-单文件直接位于服务端capsules/。files、database、code、markdown使用独立目录。markdown默认正文README.md，附件位于assets/；其他目录的默认正文仍为说明.md。code的update可设置--engine node与--entry，元数据修改会形成新提交。已有text不自动转换，创建Markdown目录请指定--kind markdown。
-
-## 排队回撤
+## 版本、位置与清除
 
 ```sh
 node src/cli.mjs history 产品说明.txt
@@ -127,31 +123,18 @@ node src/cli.mjs stat 产品说明.txt --commit OLD_COMMIT
 
 revert入队后等待终态，返回事件及结果。回撤恢复目标内容与对应元数据，并生成新提交。历史stat没有可写token，新的写入应使用当前stat结果。等待超时保留事件ID，先查询状态再决定后续操作。
 
-## 数据库、媒体与日志
-
-```sh
-node src/cli.mjs create 运行资料 --kind database
-node src/cli.mjs stat 运行资料
-node src/cli.mjs write 运行资料 --sql 'CREATE TABLE events(id INTEGER PRIMARY KEY, message TEXT, media_path TEXT REFERENCES _cap_files(path))' --token TOKEN
-node src/cli.mjs put 运行资料 media/现场.mp4 ./现场.mp4 --token CURRENT_TOKEN
-node src/cli.mjs query 运行资料 --sql 'SELECT path,size FROM _cap_files' --limit 20
-node src/cli.mjs write 运行资料 --sql 'INSERT INTO events(message,media_path) VALUES (?,?)' --params '["现场记录","media/现场.mp4"]' --token CURRENT_TOKEN
-node src/cli.mjs get 运行资料 media/现场.mp4 ./下载的现场.mp4
-node src/cli.mjs run 求和工具 --log-cap 运行资料 -- 2 3
-```
-
-每次写入后使用响应中的新token，示例中的CURRENT_TOKEN表示当前版本。数据库仅支持SQLite。业务表保存文本日志和媒体关联，_cap_files由媒体管理接口维护。媒体保存在该数据库cap的自有文件区，上传和下载使用流式传输。带外键的日志引用会阻止删除仍被使用的媒体。
-
-run的--log-cap显式选择数据库，将结果写入cap_run_logs表。日志写入失败会返回可见诊断并保留本地实际运行记录，调用者可按运行ID查询，避免重新执行工具。
-
-query和write的SQL参数由--params传JSON数组或命名参数对象。批量事务可用write --file指定内容为SQL语句对象数组的JSON文件，text/code等类别可用query --text检索、write --entry及--body修改文本。具体语法见分层帮助和[API契约](../capsule-server/docs/api.md)。
-
-位置修改使用position取得的位置token。卸载位置保留胶囊内容。
+位置修改使用position取得的子树token，卸载叶挂载保留胶囊内容；批量位置组织先用organize预演。整cap清除先用removal核对范围与阻止原因，再携实体token和mountsToken提交delete；清除不能通过revert恢复，详见[数据规范](docs/data-format.md#写入组织与回撤)。
 
 ```sh
 node src/cli.mjs position /工具/求和工具
 node src/cli.mjs unmount /工具/求和工具 --token POSITION_TOKEN
 ```
+
+## 数据库、媒体与日志
+
+数据库仅支持SQLite，业务行、日志与自有media/通过统一接口管理，_cap_files由媒体服务维护。SQL、表格草稿与媒体外键规则见[数据库说明](docs/database.md)，具体参数以help为准。
+
+`run 名称 --log-cap 数据库名称 -- 参数`显式将结果写入cap_run_logs。客户端也尝试保存本机运行记录；本机或远端日志失败均有logError并非零退出。保留实际运行回执、ID与目录核对结果，不能为了补日志重新执行工具。
 
 ## 开发
 
@@ -170,6 +153,6 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 ## 当前边界
 
-当前提供CLI和图形工作台、按类别的统一读写和SQLite查询、独立缓存及Node内置模块脚本运行。Office网页编辑需要ONLYOFFICE Docs服务，支持DOCX/XLSX/PPTX；旧DOC/XLS/PPT暂保留明确诊断和原件下载。preview与office-write继续作为独立的Agent提取和批处理工具。数据库网格编辑限有完整非NULL主键的业务表，SQL查询结果只读。带第三方依赖的工具会给出环境诊断。Python运行环境和工具依赖安装继续按需求扩展。
+运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。完整知识库备份/恢复、cap复制/改名和通用跨cap引用尚无CLI，见[覆盖与边界](docs/cli-parity.md)。
 
-异常终止留下的缓存锁会明确给出位置。先停止使用同一缓存的客户端进程，核对原持有者已退出，再移除该锁文件重试。脏缓存中的修改需要先保留并核对。
+缓存锁异常、未知本地HEAD或脏内容需要先保留并核对；原PID退出不证明孤儿Git已经停止，客户端不自动删锁抢占。处理入口见[同步与运行](docs/architecture.md#同步与运行)。

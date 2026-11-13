@@ -1,34 +1,9 @@
-import { capsuleName } from "../system/paths.mjs";
+import { listMounts, mountCapsule, moveMount, positionMount, unmountMount } from "../operations/mounts.mjs";
 
-export async function mountCommand(api, { command, positional, values }) {
-  switch (command) {
-    case "ls":
-      return api.json(
-        api.query("/api/mounts", { path: positional[0] || "/", ...values }),
-      );
-    case "mount":
-      return api.json("/api/mounts", "POST", {
-        name: capsuleName(positional[0]),
-        path: positional[1],
-      });
-    case "position":
-      return api.json(
-        api.query("/api/mounts/position", { path: positional[0] }),
-      );
-    case "move":
-      return api.json("/api/mounts/move", "POST", {
-        path: positional[0],
-        to: positional[1],
-        token: values.token,
-      });
-    case "unmount":
-      return api.json(
-        api.query("/api/mounts", { path: positional[0] }),
-        "DELETE",
-        undefined,
-        { "If-Match": values.token },
-      );
-    default:
-      throw new Error("不支持的位置命令：" + command);
-  }
+export function mountCommand(api, { command, positional, values }) {
+  if (command === "ls") return listMounts(api, { path: positional[0] || "/", ...values });
+  if (command === "mount") return mountCapsule(api, { name: positional[0], path: positional[1] });
+  if (command === "position") return positionMount(api, positional[0]);
+  if (command === "move") return moveMount(api, { path: positional[0], to: positional[1], token: values.token });
+  return unmountMount(api, { path: positional[0], token: values.token });
 }

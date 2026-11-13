@@ -1,0 +1,8 @@
+.navigation-resizer { position: absolute; z-index: 9; top: 0; bottom: 0; width: 8px; margin-left: -4px; cursor: col-resize; touch-action: none; outline: none; }
+.navigation-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
+.navigation-resizer:hover::after, .navigation-resizer:focus-visible::after { width: 2px; background: var(--text); }
+.navigation-resizer:focus-visible { outline: 1px solid var(--text); outline-offset: -2px; }
+.workspace:not(.has-native) .navigation-resizer[data-side="native"], .workspace.library-collapsed .navigation-resizer { display: none; }
+.navigation-resizing, .navigation-resizing * { cursor: col-resize !important; user-select: none !important; }
+.navigation-resizing iframe { pointer-events: none; }
+@media (pointer: coarse) { .navigation-resizer { width: 12px; margin-left: -6px; }.navigation-resizer::after { left: 5px; } }

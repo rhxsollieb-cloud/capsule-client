@@ -40,6 +40,7 @@
     "saxes": "6.0.0",
     "tabulator-tables": "6.7.1",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
+    "yaml": "2.9.1",
     "yauzl": "3.4.0"
   }
 }

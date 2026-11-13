@@ -76,9 +76,9 @@ test("单文件便捷读写和历史元数据采用统一接口", async () => {
   assert.deepEqual(calls[2], ["照片.jpg", undefined, "./input.jpg", "version"]);
   await dispatch(parseArguments(["get", "照片.jpg", "./output.jpg"]), api);
   assert.deepEqual(calls[3], [{ name: "照片.jpg", operation: "content", query: { entry: undefined } }, "./output.jpg"]);
-  await dispatch(parseArguments(["update", "代码", "--engine", "node", "--entry", "new.mjs", "--description", "新版", "--token", "current"]), api);
+  await dispatch(parseArguments(["update", "代码", "--engine", "node", "--entry", "scripts/cli.mjs", "--description", "新版", "--token", "current"]), api);
   assert.equal(calls[4].method, "PATCH");
   assert.deepEqual(calls[4].body, {
-    token: "current", description: "新版", runtime: { engine: "node", entry: "new.mjs" },
+    token: "current", description: "新版", runtime: { engine: "node", entry: "scripts/cli.mjs" },
   });
 });

@@ -6,7 +6,7 @@ import { uiError } from "./errors.mjs";
 
 export function officeContentPolicy(config) {
   const origin = officeOrigin(config.officeEditorUrl || "http://127.0.0.1:8081");
-  return `default-src 'none'; script-src 'self' ${origin}; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self' ${origin}; frame-src ${origin}; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
+  return `default-src 'none'; script-src 'self' ${origin}; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self' ${origin}; frame-src ${origin} http://127.0.0.1:* http://localhost:*; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
 }
 
 export async function sendOfficeRecovery(response, url, api) {

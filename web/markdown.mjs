@@ -49,7 +49,7 @@ function mediaAttachment(placeholder, { name, entry }) {
   placeholder.replaceWith(figure);
 }
 
-function localLink(link, { name, entry, onOpenEntry }) {
+function localLink(link, { name, entry, onOpenEntry }, article) {
   const href = link.getAttribute("href") || "";
   if (/^https:\/\//i.test(href)) {
     link.target = "_blank";
@@ -59,7 +59,8 @@ function localLink(link, { name, entry, onOpenEntry }) {
   if (href.startsWith("#")) {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      document.getElementById(href.slice(1))?.scrollIntoView({ block: "start" });
+      const target = [...article.querySelectorAll("[id]")].find((element) => element.id === href.slice(1));
+      target?.scrollIntoView({ block: "start" });
     });
     return;
   }
@@ -81,7 +82,7 @@ export function renderMarkdown(body, context = {}) {
   });
   article.append(fragment);
   for (const placeholder of article.querySelectorAll("[data-cap-media]")) mediaAttachment(placeholder, context);
-  for (const link of article.querySelectorAll("a")) localLink(link, context);
+  for (const link of article.querySelectorAll("a")) localLink(link, context, article);
   for (const table of article.querySelectorAll("table")) {
     const scroll = node("div", "markdown-table");
     table.replaceWith(scroll);

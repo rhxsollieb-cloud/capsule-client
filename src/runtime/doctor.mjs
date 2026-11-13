@@ -6,9 +6,10 @@ export async function doctor(config) {
     node: process.versions.node,
     git: git.stdout.trim(),
     serverUrl: config.serverUrl,
+    clientUrl: config.clientUrl,
     home: config.home,
     authenticated: Boolean(config.token),
     engines: ["node"],
-    dependencies: "仅支持 Node 内置模块",
+    dependencies: "由 Skill 按自身需要准备，客户端不自动安装依赖",
   };
 }

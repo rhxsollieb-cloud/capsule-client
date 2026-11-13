@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
 import { capsuleName, entryPath } from "../system/paths.mjs";
+import { readTextInput } from "./input.mjs";
 
-export async function capsuleCommand(api, { command, positional, values }) {
+export async function capsuleCommand(api, { command, positional, values }, context) {
   if (command === "list") return api.json(api.query("/api/capsules", values));
   const name = capsuleName(positional[0]);
   switch (command) {
     case "create": {
       const input = { name, description: values.description || "" };
       if (values.kind !== undefined) input.kind = values.kind;
-      if (values.body) input.body = await readFile(values.body, "utf8");
+      if (values.body !== undefined) input.body = await readTextInput(values.body, context);
       if (values.engine) {
         input.runtime = {
           engine: values.engine,
@@ -19,6 +19,8 @@ export async function capsuleCommand(api, { command, positional, values }) {
     }
     case "stat":
       return api.json(api.path(name, "", values));
+    case "convert-skill":
+      return api.json(api.path(name, "skill"), "POST", { token: values.token });
     case "update": {
       const input = { token: values.token };
       if (values.description !== undefined) input.description = values.description;

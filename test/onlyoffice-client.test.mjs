@@ -47,8 +47,9 @@ test("Office桥接固定源CSP、会话校验与恢复下载沿用已有读取�
   const page = await fetch(ui.url);
   const csp = page.headers.get("Content-Security-Policy");
   assert.match(csp, /script-src 'self' https:\/\/docs.example;/);
-  assert.match(csp, /frame-src https:\/\/docs.example;/);
-  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|\*/);
+  assert.deepEqual(csp.match(/frame-src ([^;]+);/)[1].split(" "), ["https://docs.example", "http://127.0.0.1:*", "http://localhost:*"]);
+  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
+  assert.doesNotMatch(csp.replace(/frame-src [^;]+;/, ""), /\*/);
   const session = await (await fetch(ui.url + "/ui/session")).json();
   const action = async (body, headers = {}) => fetch(ui.url + "/ui/action", { method: "POST", headers: { "Content-Type": "application/json", "X-Capsule-Session": session.csrfToken, ...headers }, body: JSON.stringify(body) });
   assert.equal((await action({ action: "office-open", name: "原件.docx", token: "old" }, { "X-Capsule-Session": "wrong" })).status, 403);

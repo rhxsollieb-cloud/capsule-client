@@ -24,7 +24,7 @@ export function replace(element, ...children) {
 export const directoryKinds = new Set(["files", "database", "code", "markdown"]);
 export const kindLabels = {
   text: "文本", image: "图片", audio: "音频", video: "视频", excel: "Excel",
-  word: "Word", file: "文件", files: "文件集合", database: "SQLite 数据库", code: "代码", markdown: "Markdown · 正文与附件",
+  word: "Word", file: "文件", files: "文件集合", database: "SQLite 数据库", code: "Skill", markdown: "Markdown · 正文与附件",
 };
 
 export function fileKind(name, kind = "file") {

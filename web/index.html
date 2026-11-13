@@ -10,36 +10,23 @@
   </head>
   <body>
     <div class="app">
-      <header class="topbar">
-        <a class="brand" href="/" aria-label="Capsule 工作台"><span class="brand-mark" data-icon="capsule"></span><span><strong>Capsule</strong><small>知识工作台</small></span></a>
-        <label class="global-search"><span data-icon="search"></span><input id="search" type="search" placeholder="搜索 cap 名称或简介" autocomplete="off" aria-label="搜索知识库"><kbd>⌘ K</kbd></label>
-        <button id="theme-toggle" class="button theme-toggle" type="button" title="切换明暗主题">深色</button>
-        <button id="connection" class="connection-status" type="button" title="重新检查连接"><span class="connection-dot"></span><span id="connection-label">连接中</span></button>
-      </header>
       <div class="workspace">
-        <nav class="activity-bar" aria-label="工作区">
-          <button id="activity-library" class="activity-button active" title="知识库" aria-label="知识库" data-icon="library"></button>
-          <button id="activity-events" class="activity-button" title="事件与运行" aria-label="事件与运行" data-icon="events"></button>
-          <div class="activity-spacer"></div>
-          <button id="activity-agent" class="activity-button" title="Agent 操作入口" aria-label="Agent 操作入口" data-icon="terminal"></button>
-        </nav>
-        <aside class="sidebar">
-          <div class="sidebar-header"><h2>知识库</h2><div class="button-group"><button id="refresh-tree" class="icon-button" title="刷新目录" aria-label="刷新目录" data-icon="refresh"></button><button id="new-cap" class="icon-button" title="新建 cap" aria-label="新建 cap" data-icon="plus"></button></div></div>
-          <div class="sidebar-tabs" role="tablist" aria-label="知识视图"><button id="mode-tree" class="tab-button active" role="tab" aria-selected="true">虚拟路径</button><button id="mode-all" class="tab-button" role="tab" aria-selected="false">全部 cap</button></div>
-          <div id="kind-filters" class="kind-filters" aria-label="按内容类别筛选"></div>
+        <aside id="knowledge-navigation" class="sidebar" aria-label="知识库">
+          <div class="sidebar-header library-header">
+            <button id="library-menu" class="library-mark library-menu-button" type="button" title="知识视图与工作台" aria-label="知识视图与工作台"><span data-icon="capsule"></span><span id="event-badge" class="attention-badge hidden"></span></button>
+            <input id="library-filter" class="library-filter" type="search" placeholder="过滤知识库" autocomplete="off" title="过滤名称或简介 · ⌘K / Ctrl+K" aria-label="过滤知识库名称或简介" aria-controls="tree">
+            <button id="new-cap" class="icon-button" type="button" title="新建 cap" aria-label="新建 cap" data-icon="plus"></button>
+          </div>
+          <button id="connection" class="connection-alert hidden" type="button" title="重试连接" aria-live="polite"></button>
           <div id="tree" class="tree-scroll" aria-label="知识节点"></div>
-          <div class="sidebar-footer"><span data-icon="branch"></span><span id="tree-caption">按需展开内容</span></div>
         </aside>
         <aside id="native-navigation" class="native-sidebar hidden" aria-label="所选 cap 的内容"></aside>
         <main class="main-pane">
-          <div id="editor-tabs" class="editor-tabs"><div class="editor-tab active"><span data-icon="capsule"></span><span>工作台</span></div></div>
-          <div class="content-header"><div id="breadcrumbs" class="breadcrumbs"><span>知识库</span></div><div id="content-actions" class="content-actions"></div></div>
+          <div id="document-header" class="document-header"></div>
           <div id="content" class="content-view"></div>
           <section id="panel" class="panel hidden" aria-label="事件与运行结果"><div class="panel-header"><div class="panel-tabs"><button id="panel-events" class="tab-button active">事件</button><button id="panel-output" class="tab-button">运行结果</button></div><div class="button-group"><button id="panel-refresh" class="icon-button" title="刷新事件" aria-label="刷新事件" data-icon="refresh"></button><button id="panel-close" class="icon-button" title="收起面板" aria-label="收起面板" data-icon="close"></button></div></div><div id="panel-body" class="panel-body"></div></section>
         </main>
-        <aside id="inspector" class="inspector hidden" aria-label="cap 属性"></aside>
       </div>
-      <footer class="statusbar"><span class="status-left"><span data-icon="branch"></span><span id="status-context">本地客户端</span></span><span id="status-server">连接服务端</span><button id="toggle-inspector" class="status-button" title="显示或隐藏属性">属性</button></footer>
     </div>
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     <dialog id="dialog"></dialog>

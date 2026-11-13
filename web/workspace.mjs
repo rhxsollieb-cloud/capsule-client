@@ -1,18 +1,22 @@
-import { action, readText } from "./api.mjs";
-import { button, directoryKinds, fileKind, kindLabels, node, replace, shortCommit } from "./dom.mjs";
-import { icon } from "./icons.mjs";
+import { action, contentUrl, readDetails, readText } from "./api.mjs";
+import { directoryKinds, fileKind, node, replace } from "./dom.mjs";
 import { TextEditor } from "./editor.mjs";
-import { downloadButton, emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
+import { emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
 import { OfficeView } from "./office.mjs";
 import { isOfficeFile } from "./office-state.mjs";
 import { overviewView } from "./overview.mjs";
 import { markdownOutline } from "./markdown.mjs";
 import { NativeNavigator } from "./native-navigation.mjs";
+import { DocumentHeader } from "./document-header.mjs";
+import { SkillView } from "./skill.mjs";
+import { ActivitySession } from "./activity.mjs";
 
 export class Workspace {
   constructor({ inspector, onError, onChanged, onCreate, onRun, onUpload, onRevert }) {
     Object.assign(this, { inspector, onError, onChanged, onCreate, onRun, onUpload, onRevert });
     this.content = document.getElementById("content");
+    this.header = new DocumentHeader(document.getElementById("document-header"), { onError });
+    this.activity = new ActivitySession({ onChange: (state) => this.header.activity.update(state) });
     this.selection = 0;
     this.viewRequest = 0;
     this.databaseDrafts = new Map();
@@ -35,6 +39,52 @@ export class Workspace {
     await overviewView(this.content, onOpen, this.onCreate, () => selected === this.selection && !this.cap);
   }
   hasDirty() { return Boolean(this.cap && (this.editor.hasDirty(this.cap.name, this.entry) || this.database?.hasDirty() || this.office?.hasDirty())); }
+  draftState(name) {
+    const drafts = [...this.editor.drafts, ...this.databaseDrafts].filter(([key]) => key.startsWith(`${name}\0`)).map(([, draft]) => draft);
+    const description = this.inspector.drafts.get(name);
+    if (description) drafts.push(description);
+    const office = this.cap?.name === name ? this.office : null;
+    return {
+      dirty: drafts.some((draft) => draft.dirty) || Boolean(office?.hasDirty()),
+      saving: drafts.some((draft) => draft.saving) || Boolean(office?.state.saving || office?.collecting),
+    };
+  }
+  unlinked(item) {
+    if (this.item?.path !== item.path || this.item?.name !== item.name) return;
+    this.item = { ...this.item, path: undefined };
+    if (this.cap) this.chrome();
+    else this.header.update({ name: item.name, kind: item.kind, path: item.name, controls: { state: "loading", statusText: "读取中" }, contextKey: `loading-${this.selection}` });
+  }
+  removed(name) {
+    for (const drafts of [this.editor.drafts, this.databaseDrafts])
+      for (const key of drafts.keys()) if (key.startsWith(`${name}\0`)) drafts.delete(key);
+    this.inspector.drafts.delete(name);
+    if (this.inspector.selected?.name === name) this.inspector.selected = null;
+    if (this.editor.current?.cap?.name === name) this.editor.current = null;
+    if (this.inspector.current?.name === name) {
+      this.inspector.current = null;
+      this.inspector.draft = null;
+      this.inspector.hide();
+    }
+    if (this.cap?.name !== name && this.item?.name !== name) return;
+    this.selection++;
+    this.viewRequest++;
+    this.office?.destroy();
+    this.office = null;
+    this.database?.destroy?.();
+    this.database = null;
+    this.skillView?.destroy();
+    this.skillView = null;
+    this.cap = null;
+    this.item = null;
+    this.entry = undefined;
+    this.detailsMode = false;
+    this.displayedCommit = undefined;
+    this.navigation.hide();
+    this.activity?.clear();
+    this.header.update(null);
+    emptyView(this.content, this.onCreate);
+  }
   async leaveOffice() {
     const office = this.office;
     if (office && !await office.prepareLeave()) return false;
@@ -49,6 +99,10 @@ export class Workspace {
     this.database = null;
     this.cap = null;
     this.entry = undefined;
+    this.detailsMode = false;
+    this.activity?.clear();
+    this.editingContent = false;
+    this.header.update({ name: item.name, kind: item.kind, path: item.path, controls: { state: "loading", statusText: "读取中" }, contextKey: `loading-${selected}` });
     this.navigation.hide();
     replace(this.content, node("p", "loading", "正在读取 cap…"));
     try {
@@ -60,52 +114,71 @@ export class Workspace {
       this.inspector.context({ label: "当前 cap", values: [cap.name] });
       this.navigation.show(cap);
       this.entry = cap.kind === "markdown" ? "README.md" : undefined;
-      this.mode = cap.kind === "database" ? "database" : cap.kind === "markdown" ? "content" : directoryKinds.has(cap.kind) ? "files" : "content";
+      this.mode = cap.kind === "code" ? "skill" : cap.kind === "database" ? "database" : cap.kind === "markdown" ? "content" : directoryKinds.has(cap.kind) ? "files" : "content";
       this.chrome();
       await this.load();
     } catch (error) {
-      if (selected === this.selection) replace(this.content, node("p", "error-message file-empty", error.message));
+      if (selected === this.selection) {
+        replace(this.content, node("p", "error-message file-empty", error.message));
+        this.header.update({ name: item.name, kind: item.kind, path: this.item?.path || item.name, controls: { state: "error", statusText: "读取失败", detail: error.message }, contextKey: `failed-${selected}` });
+      }
       this.onError(error);
     }
   }
   chrome() {
     if (!this.cap) return;
     const cap = this.cap;
-    const tab = node("div", "editor-tab active");
-    tab.append(icon(this.entry ? fileKind(this.entry) : cap.kind, `kind-${cap.kind}`), node("span", "", this.entry?.split("/").at(-1) || cap.name));
-    if (this.hasDirty()) tab.append(node("span", "dirty-indicator", "●"));
-    replace(document.getElementById("editor-tabs"), tab);
-    const crumbs = [node("span", "", this.item?.path || cap.name)];
-    if (this.entry) crumbs.push(node("span", "muted", "›"), node("span", "mono", this.entry));
-    replace(document.getElementById("breadcrumbs"), ...crumbs);
-    document.getElementById("status-context").textContent = `${kindLabels[cap.kind]} · ${shortCommit(cap.commit)}${this.hasDirty() ? " · 未保存" : ""}`;
-    const actions = document.getElementById("content-actions");
-    const controls = [];
-    if (directoryKinds.has(cap.kind)) controls.push(button("文件概览", () => this.showFiles(), this.mode === "files" ? "button active ghost" : "button ghost"));
-    if (cap.kind === "markdown") controls.push(button("正文", () => this.openFile("README.md"), this.entry === "README.md" && this.mode === "content" ? "button active ghost" : "button ghost"));
-    if (cap.kind === "database") controls.push(button("数据", () => this.showDatabase(), this.mode === "database" ? "button active ghost" : "button ghost"));
-    if (cap.kind === "code") {
-      const run = button("运行", () => this.onRun(cap, this.hasDirty()), "button ghost");
-      run.prepend(icon("play"));
-      run.disabled = !cap.runtime;
-      run.title = cap.runtime ? "同步服务端版本后本地运行" : "此 cap 尚未配置运行入口";
-      controls.push(run);
-    }
-    const upload = button(cap.kind === "markdown" ? "上传附件" : "上传", () => this.onUpload(cap, this.entry), "button ghost");
-    upload.disabled = Boolean(this.office?.hasDirty());
-    upload.prepend(icon("upload"));
-    const history = button("历史", () => this.showHistory(), this.mode === "history" ? "button active ghost" : "button ghost");
-    history.prepend(icon("history"));
-    const refresh = button("", () => this.refresh(true), "icon-button");
-    refresh.append(icon("refresh"));
-    refresh.title = "刷新已保存版本，保留草稿";
-    refresh.setAttribute("aria-label", refresh.title);
-    controls.push(upload, history, refresh);
-    if (!directoryKinds.has(cap.kind) || this.entry) controls.push(downloadButton(cap.name, this.entry));
-    replace(actions, ...controls);
+    const entry = this.entry;
+    const selection = this.selection;
+    const mode = this.mode;
+    const current = () => selection === this.selection && this.cap?.name === cap.name && this.entry === entry && this.mode === mode;
+    const inContext = (callback) => () => { if (current()) return callback(); };
+    let controls = null;
+    if (this.mode === "skill") controls = this.skillView?.controlsInfo() || { state: "loading", statusText: "读取本机状态" };
+    else if (this.mode === "content") controls = this.office?.controlsInfo() || this.editor.controls(cap.name, entry);
+    if (!controls && this.database?.hasDirty()) controls = { state: "dirty", statusText: "表格有未保存修改" };
+    this.updateActivity();
+    const items = [];
+    if (directoryKinds.has(cap.kind)) items.push({ label: "文件概览", icon: "files", action: inContext(() => this.showFiles()) });
+    if (cap.kind === "markdown") items.push({ label: "打开正文", icon: "text", action: inContext(() => this.openFile("README.md")) });
+    if (cap.kind === "database") items.push({ label: "浏览数据表", icon: "database", action: inContext(() => this.showDatabase()) });
+    if (cap.kind === "code" && this.mode !== "skill") items.push(
+      { label: "Skill 交互入口", icon: "code", action: inContext(() => this.showSkill()) },
+      { label: "运行 Skill CLI", icon: "play", action: inContext(() => this.onRun(cap, this.hasDirty())) },
+    );
+    items.push(
+      { label: cap.kind === "markdown" ? "上传附件" : "上传原件", icon: "upload", disabled: Boolean(this.office?.hasDirty()), action: inContext(() => this.onUpload(cap, entry)) },
+      { label: "版本历史与回撤", icon: "history", disabled: Boolean(this.office?.state.saving), action: inContext(() => this.showHistory()) },
+      { label: "检查更新", icon: "refresh", action: inContext(() => this.refresh(true)) },
+    );
+    if (!directoryKinds.has(cap.kind) || entry) items.push({
+      label: "下载原件", icon: "download", href: contentUrl(cap.name, entry, true), download: entry?.split("/").at(-1) || cap.name,
+    });
+    this.header.update({
+      cap, controls, items, activity: this.activity?.state,
+      name: entry?.split("/").at(-1) || cap.name,
+      kind: entry ? fileKind(entry) : cap.kind,
+      path: [this.item?.path || cap.name, entry].filter(Boolean).join(" / "),
+      contextKey: `${cap.name}\0${entry || ""}\0${this.mode}\0${this.detailsMode ? "details" : ""}`,
+    });
+  }
+  updateActivity() {
+    if (!this.activity || !this.cap) return;
+    let scope;
+    let entry;
+    let dirty = false;
+    if (this.mode === "content" && this.office) { scope = "office"; entry = this.entry; dirty = this.office.hasDirty(); }
+    else if (this.mode === "content" && this.editingContent?.name === this.cap.name &&
+        this.editingContent.entry === this.entry && this.editingContent.details === this.detailsMode) {
+      scope = this.detailsMode ? "details" : "content";
+      entry = scope === "content" ? this.entry : undefined;
+      dirty = this.editor.hasDirty(this.cap.name, this.entry);
+    } else if (this.mode === "database" && this.database?.record?.editable) { scope = "database"; dirty = this.database.hasDirty(); }
+    this.activity.setTarget({ name: this.cap.name, scope, entry, dirty });
   }
   async load({ background = false } = {}) {
     if (!this.cap) return;
+    if (this.mode === "skill" && this.skillView && background) { this.skillView.refresh(this.cap); return; }
     const selected = this.selection;
     const request = ++this.viewRequest;
     const cap = this.cap;
@@ -115,8 +188,23 @@ export class Workspace {
       if (background) { this.office.refresh(cap); return; }
       if (!await this.leaveOffice() || !isCurrent()) return;
     }
+    this.skillView?.destroy();
+    this.skillView = null;
     this.database?.destroy?.();
     this.database = null;
+    if (!background) this.editingContent = false;
+    this.updateActivity();
+    if (this.mode === "skill") {
+      this.skillView = new SkillView(this.content, cap, {
+        isCurrent, onError: this.onError,
+        onRun: (current) => this.onRun(current, this.hasDirty()),
+        onOpenEntry: (value) => this.openFile(value), onSaved: (saved) => this.saved(saved),
+        onControlsChanged: () => { if (isCurrent()) this.chrome(); },
+      });
+      this.displayedCommit = cap.commit;
+      this.chrome();
+      return;
+    }
     if (this.mode === "history") {
       await historyView(this.content, cap, isCurrent, (target) => this.onRevert(this.cap, target, this.hasDirty()), this.onError);
       return;
@@ -161,7 +249,7 @@ export class Workspace {
         onDirty: () => this.chrome(),
         onReload: () => this.reopenOffice(),
       });
-      if (isCurrent()) this.displayedCommit = cap.commit;
+      if (isCurrent()) { this.displayedCommit = cap.commit; this.chrome(); }
       return;
     }
     if (["file", "word", "excel"].includes(kind)) {
@@ -171,14 +259,15 @@ export class Workspace {
     }
     if (!background) replace(this.content, node("p", "loading", "正在读取正文…"));
     try {
-      const record = await readText(cap.name, entry, isCurrent);
+      const record = this.detailsMode ? await readDetails(cap.name, isCurrent) : await readText(cap.name, entry, isCurrent);
       if (!record || !isCurrent()) return;
       if (background && this.editor.hasDirty(cap.name, entry)) {
         this.editor.markRemote(cap.name, entry);
         return;
       }
       this.cap = { ...this.cap, description: record.description ?? this.cap.description, runtime: record.runtime, commit: record.commit, token: record.token };
-      this.editor.open(this.content, this.cap, entry, record);
+      this.editor.open(this.content, this.cap, entry, { ...record, saveAction: this.detailsMode ? "save-details" : "save" });
+      this.editingContent = { name: cap.name, entry, details: this.detailsMode };
       this.inspector.context({ label: /\.md$/i.test(entry || cap.name) ? "正文大纲" : "文件内容", headings: markdownOutline(record.body), values: [`${record.body.split("\n").length} 行 · ${record.body.length.toLocaleString()} 字符`], entry });
       this.displayedCommit = record.commit;
       this.chrome();
@@ -198,9 +287,19 @@ export class Workspace {
       } catch (error) { this.onError(error); }
     });
   }
-  async openFile(entry) { if (!await this.leaveOffice()) return; this.entry = entry; this.mode = "content"; this.navigation?.selectEntry(entry); this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
-  async showFiles() { if (!await this.leaveOffice()) return; this.entry = undefined; this.mode = "files"; this.navigation?.setMode("files"); this.inspector.context({ label: "文件集合", values: ["从第二列目录进入文件。"] }); this.chrome(); this.load(); }
-  async showDatabase(table) { if (!await this.leaveOffice()) return; this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.navigation?.setMode("tables"); this.navigation?.selectTable(table); this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
+  async openDetails(record) {
+    if (this.cap?.name !== record.name || record.source.type !== "content" || !await this.leaveOffice()) return;
+    this.entry = record.kind === "text" ? undefined : record.source.entry;
+    this.detailsMode = true;
+    this.mode = "content";
+    if (this.entry) this.navigation?.selectEntry(this.entry);
+    this.chrome();
+    await this.load();
+  }
+  async showSkill() { if (!await this.leaveOffice()) return; this.detailsMode = false; this.entry = undefined; this.mode = "skill"; this.chrome(); await this.load(); }
+  async openFile(entry) { if (!await this.leaveOffice()) return; this.detailsMode = entry === "说明.md" && ["files", "code", "database"].includes(this.cap?.kind); this.entry = entry; this.mode = "content"; this.navigation?.selectEntry(entry); this.inspector.context({ label: "当前文件", values: [entry] }); this.chrome(); this.load(); }
+  async showFiles() { if (!await this.leaveOffice()) return; this.detailsMode = false; this.entry = undefined; this.mode = "files"; this.navigation?.setMode("files"); this.inspector.context({ label: "文件集合", values: ["从第二列目录进入文件。"] }); this.chrome(); this.load(); }
+  async showDatabase(table) { if (!await this.leaveOffice()) return; this.detailsMode = false; this.entry = undefined; this.databaseTable = table; this.mode = "database"; this.navigation?.setMode("tables"); this.navigation?.selectTable(table); this.inspector.context({ label: table ? "当前数据表" : "数据浏览", values: [table || "选择数据表浏览，或展开 SQL 自定义查询。"] }); this.chrome(); this.load(); }
   async showHistory() { if (!await this.leaveOffice()) return; this.mode = "history"; this.inspector.context({ label: "版本历史", values: ["此 cap 的内容与元数据提交。回撤会通过队列生成新版本。"] }); this.chrome(); this.load(); }
   async reopenOffice() {
     if (!await this.leaveOffice()) return;
@@ -221,10 +320,13 @@ export class Workspace {
   saved(cap, { reload = false } = {}) {
     this.onChanged();
     if (this.cap?.name !== cap.name) return;
+    const draft = this.editor.drafts.get(this.editor.key(cap.name, this.entry));
+    if (draft?.dirty && draft.baseToken !== cap.token) this.editor.markRemote(cap.name, this.entry);
     this.cap = cap;
     this.inspector.show(cap);
     this.navigation?.update(cap);
     this.office?.refresh(cap);
+    this.skillView?.refresh(cap);
     if (this.mode === "database") this.database?.refresh(cap);
     this.chrome();
     if (reload) this.refresh(true);
@@ -243,6 +345,7 @@ export class Workspace {
       this.navigation?.update(cap);
       this.chrome();
       if (this.office) { this.office.refresh(cap); return; }
+      if (this.mode === "skill" && this.skillView) { this.skillView.refresh(cap); return; }
       if (this.mode === "content" && this.hasDirty()) {
         if (changed) this.editor.markRemote(name, this.entry);
         return;

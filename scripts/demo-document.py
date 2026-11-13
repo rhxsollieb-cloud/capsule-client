@@ -91,6 +91,13 @@ def create_document(destination):
     document.core_properties.title = "拍摄执行说明"
     document.core_properties.subject = "胶囊知识库开发样例"
     document.core_properties.author = "Capsule 示例"
+    document.core_properties.language = "zh-CN"
+    for language in document.styles.element.iter(qn("w:lang")):
+        language.set(qn("w:val"), "zh-CN")
+        language.set(qn("w:eastAsia"), "zh-CN")
+    for language in document.settings.element.iter(qn("w:themeFontLang")):
+        language.set(qn("w:val"), "zh-CN")
+        language.set(qn("w:eastAsia"), "zh-CN")
     # Remove inherited decorative title rules and theme font overrides.
     for tree in [document.element, document.styles.element]:
         for border in list(tree.iter(qn("w:pBdr"))):

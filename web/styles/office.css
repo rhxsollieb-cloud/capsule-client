@@ -1,9 +1,6 @@
 .onlyoffice-view { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
-.onlyoffice-toolbar { flex: 0 0 auto; }
-.onlyoffice-note { margin-right: auto; font-size: 11px; }
-.onlyoffice-stage { position: relative; flex: 1; min-height: 360px; background: var(--control); }
-.onlyoffice-mount, .onlyoffice-stage > iframe { width: 100%; height: 100%; min-height: 360px; border: 0; }
+.onlyoffice-stage { position: relative; flex: 1; min-height: 0; background: var(--control); }
+.onlyoffice-mount, .onlyoffice-stage > iframe { width: 100%; height: 100%; min-height: 0; border: 0; }
 .onlyoffice-notice { padding: 10px 15px; border-bottom: 1px solid var(--border); background: var(--stripe); font-size: 11px; line-height: 1.7; }
 .onlyoffice-view > .button { align-self: flex-start; margin: 8px 15px; }
 .onlyoffice-unavailable { margin: 40px auto; padding: 20px; max-width: 550px; font-size: 12px; line-height: 1.9; }
-.onlyoffice-hint { flex: 0 0 auto; margin: 0; padding: 6px 12px; border-top: 1px solid var(--border); background: var(--stripe); font-size: 10px; line-height: 1.6; }

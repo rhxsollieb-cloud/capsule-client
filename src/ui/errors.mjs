@@ -50,6 +50,7 @@ export function errorResult(error, api) {
     error: error.message || "本地客户端操作失败",
     ...(typeof error.code === "string" ? { code: error.code } : {}),
     ...(error.eventId ? { eventId: error.eventId } : {}),
+    ...(error.uncertain ? { uncertain: true } : {}),
     ...(error.result ? { result: error.result } : {}),
   });
 }

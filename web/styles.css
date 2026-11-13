@@ -3,6 +3,13 @@
 @import url("./styles/layout.css");
 @import url("./styles/native.css");
 @import url("./styles/components.css");
+@import url("./styles/menus.css");
+@import url("./styles/shell.css");
+@import url("./styles/document-header.css");
+@import url("./styles/library-management.css");
+@import url("./styles/properties.css");
+@import url("./styles/navigation-resize.css");
+@import url("./styles/skill.css");
 @import url("./styles/content.css");
 @import url("./styles/data-grid.css");
 @import url("./styles/office.css");

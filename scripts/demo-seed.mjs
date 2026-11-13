@@ -52,9 +52,8 @@ async function seed() {
     return api.json(api.path(cap.name, "write"), "POST", { token: cap.token, statements: databaseStatements });
   });
   await create("报价计算器", "code", "# 报价计算器\n\n开发样例，按数量乘单价计算金额。默认数量 2、单价 1200 元。无需第三方依赖。\n", async (cap) => {
-    cap = await write(cap, "main.mjs", calculatorBody);
-    return write(cap, "package.json", JSON.stringify({ name: "capsule-demo-quote", private: true, type: "module", scripts: { start: "node main.mjs" } }, null, 2) + "\n");
-  }, { engine: "node", entry: "main.mjs" });
+    return write(cap, "scripts/cli.mjs", calculatorBody);
+  });
   let run;
   if (created.some((cap) => cap.name === "报价计算器")) {
     const logDatabase = await api.json(api.path("素材记录"));

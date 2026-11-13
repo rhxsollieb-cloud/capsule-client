@@ -59,8 +59,8 @@ try {
       new Paragraph({ children: [new TextRun({ text: "项目：", bold: true }), new TextRun("{{project}}《原生样式保留》")] }),
       new Paragraph("委托方：{{customer}}"),
       new Paragraph("约定金额：{{quote}}"),
-      new Paragraph("通过右上方‘填写Word模板’填入字段，保存会产生新的cap提交。"),
-      new Paragraph("这是开发样例，不具有合同效力。原件保持DOCX格式，填写使用docx库的模板补丁。"),
+      new Paragraph("通过工作台内的ONLYOFFICE直接编辑，点击内容标题行‘保存’确认写回知识库。"),
+      new Paragraph("这是开发样例，不具有合同效力。原件保持DOCX格式，占位字段也可用office-write命令显式批量填写。"),
     ] }],
   });
   const templateFile = directory + "委托模板.docx";
