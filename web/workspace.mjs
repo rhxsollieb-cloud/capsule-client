@@ -1,11 +1,11 @@
-import { action, contentUrl, readDetails, readText } from "./api.mjs";
+import { action, contentUrl } from "./api.mjs";
 import { directoryKinds, fileKind, node, replace } from "./dom.mjs";
 import { TextEditor } from "./editor.mjs";
 import { emptyView, filesView, fileView, historyView, mediaView } from "./views.mjs";
 import { OfficeView } from "./office.mjs";
 import { isOfficeFile } from "./office-state.mjs";
 import { overviewView } from "./overview.mjs";
-import { markdownOutline } from "./markdown.mjs";
+import { loadWorkspaceText } from "./workspace-text.mjs";
 import { NativeNavigator } from "./native-navigation.mjs";
 import { DocumentHeader } from "./document-header.mjs";
 import { SkillView } from "./skill.mjs";
@@ -74,6 +74,7 @@ export class Workspace {
     this.viewRequest++;
     this.office?.destroy();
     this.office = null;
+    this.reader?.destroy(); this.reader = null;
     this.database?.destroy?.();
     this.database = null;
     this.skillView?.destroy();
@@ -125,6 +126,7 @@ export class Workspace {
     if (!navigation) return false;
     this.editor?.close?.();
     const selected = ++this.selection;
+    this.reader?.destroy(); this.reader = null;
     this.item = item;
     this.database?.destroy?.();
     this.database = null;
@@ -166,7 +168,7 @@ export class Workspace {
     const inContext = (callback) => () => { if (current()) return callback(); };
     let controls = null;
     if (this.mode === "skill") controls = this.skillView?.controlsInfo() || { state: "loading", statusText: "读取本机状态" };
-    else if (this.mode === "content") controls = this.office?.controlsInfo() || this.editor.controls(cap.name, entry);
+    else if (this.mode === "content") controls = this.office?.controlsInfo() || this.reader?.controlsInfo() || this.editor.controls(cap.name, entry);
     if (!controls && this.database?.hasDirty()) controls = { state: "dirty", statusText: "表格有未保存修改" };
     this.updateActivity();
     const items = [];
@@ -212,6 +214,7 @@ export class Workspace {
   permissionsChanged() {
     if (!this.cap) return;
     this.editor?.updatePermissions?.(this.cap);
+    this.reader?.updatePermissions(this.cap);
     this.database?.controls();
     this.office?.controls();
     this.skillView?.notifyControls();
@@ -219,6 +222,7 @@ export class Workspace {
   }
   async load({ background = false } = {}) {
     if (!this.cap) return;
+    if (background && this.reader?.cap.commit === this.cap.commit) { this.reader.updatePermissions(this.cap); this.chrome(); return; }
     if (this.mode === "skill" && this.skillView && background) { this.skillView.refresh(this.cap); return; }
     if (!background) this.editor?.close?.();
     const selected = this.selection;
@@ -234,6 +238,7 @@ export class Workspace {
     this.skillView = null;
     this.database?.destroy?.();
     this.database = null;
+    this.reader?.destroy(); this.reader = null;
     if (!background) this.editingContent = false;
     this.updateActivity();
     if (this.mode === "skill") {
@@ -301,18 +306,7 @@ export class Workspace {
     }
     if (!background) replace(this.content, node("p", "loading", "正在读取正文…"));
     try {
-      const record = this.detailsMode ? await readDetails(cap.name, isCurrent) : await readText(cap.name, entry, isCurrent);
-      if (!record || !isCurrent()) return;
-      if (background && this.editor.hasDirty(cap.name, entry)) {
-        this.editor.markRemote(cap.name, entry);
-        return;
-      }
-      this.cap = { ...this.cap, description: record.description ?? this.cap.description, runtime: record.runtime, commit: record.commit, token: record.token, ...(record.permissions ? { permissions: record.permissions } : {}) };
-      this.editor.open(this.content, this.cap, entry, { ...record, saveAction: this.detailsMode ? "save-details" : "save" });
-      this.editingContent = { name: cap.name, entry, details: this.detailsMode };
-      this.inspector.context({ label: /\.md$/i.test(entry || cap.name) ? "正文大纲" : "文件内容", headings: markdownOutline(record.body), values: [`${record.body.split("\n").length} 行 · ${record.body.length.toLocaleString()} 字符`], entry });
-      this.displayedCommit = record.commit;
-      this.chrome();
+      await loadWorkspaceText(this, { cap, entry, isCurrent, background });
     } catch (error) {
       if (!isCurrent()) return;
       if (error.status === 400 || error.status === 413) fileView(this.content, cap, entry, error.message);

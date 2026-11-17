@@ -11,7 +11,7 @@ export const group = {
   {
     name: "read", arity: [1,2], handler: "capsule",
     options: { "from": integer(1, 1000000), "limit": integer(1, 10000) },
-    help: "read 名称 [相对路径] [--from 行号] [--limit 行数]\n单文件直接读取自身，markdown默认README.md、code默认SKILL.md、files/database默认说明.md。默认80行，最多10000行；lines.nextLine为续读位置。",
+    help: "read 名称 [相对路径] [--from 行号] [--limit 行数]\n单文件直接读取自身，markdown默认README.md、code默认SKILL.md、files/database默认说明.md。支持超过1MiB的UTF-8正文；默认80行、最多10000行，实际JSON预算可能提前分页，按lines.nextLine续读并核对同一token；单行过大明确失败，不把摘录当全文写回。",
   },
   {
     name: "edit", arity: [1,2], handler: "edit",

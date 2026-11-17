@@ -7,13 +7,13 @@
 | 能力 | 当前覆盖 | 边界 |
 | --- | --- | --- |
 | 连接与登录 | connection/login/logout/password-change、me/whoami | 前端与CLI共用Authentication和ConnectionStore；隐藏输入或密码文件，不保存密码；人和Agent统一账户密码、默认共享同一配置的12h会话与权限，Agent非交互用--password-file文件或- |
-| cap创建、概要、正文、原件、详述与清除 | create/stat/update/read/put/get/details/write-details/removal/delete | 实体token和挂载token分开；清除预览后入队，已清除cap不能用revert恢复 |
+| cap创建、导入、概要、正文、原件、详述与清除 | create/import/copy/stat/update/read/put/get/details/write-details/removal/delete | import将一个干净目录流式导入全新cap并形成一次初始提交，copy复制独立实体；均不自动挂载。实体token和挂载token分开；清除预览后入队 |
 | 虚拟位置 | ls/mount/position/move/unmount/where | where列出实体全部挂载；移动作用于位置子树，原件不跟随虚拟路径搬动 |
 | 位置批量规划 | organize inspect/dry-run/apply/receipt | 仅mount/move/unmount；顺序规划依赖，同一目录事务提交。没有把多cap内容创建/更新冒充同一原子事务 |
 | 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
 | 缓存复用 | sync、run及Skill注册共享跨进程缓存锁 | 同提交与完整本地对象复用；新版本可增量下载，changed只表示checkout变化。默认等锁30秒，CACHE_BUSY及异常锁见[缓存架构](architecture.md#同步与运行) |
 | 小原件复用 | get、preview及工作台原件共享ETag缓存 | 每次重验当前权限；16MiB单文件、128MiB已登记磁盘LRU，Range和大媒体不整包预取，见[流量说明](content-cache.md) |
-| 渐进读取 | read/details行范围，list/entries/query分页，fields/raw/max-chars/out | 保留token与续读；字段省略和预算省略明确可见，不把摘录当完整正文 |
+| 渐进读取 | read/details行范围，list/entries/query分页，fields/raw/max-chars/out | 大于1MiB的UTF-8原文按完整行有界读取，JSON预算可能提前分页；核对token与nextLine，单行过大明确413，不把摘录当完整正文 |
 | 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
 | 精确文字修改 | edit | 全部分页需同一原token；0匹配失败，多匹配显式all；默认详述，显式路径通过原件文本接口写回 |
 | 管道输入 | 正文及JSON文件参数接受- | 严格UTF-8，默认最多1MiB，拒绝NUL；二进制原件继续使用流式put/get |
@@ -44,6 +44,8 @@ guide无主题先列索引，再按data/skills展开项目模型和Skill宿主�
 ## 输入、输出和失败
 
 input.mjs共用文件与标准输入读取，按实际读取字节限制，普通文件预检与流式上限同时执行，UTF-8错误不替换为乱码。文字BOM与换行保留，JSON输入允许BOM。原件put/get仍走流式传输，不受文字输入格式替代。
+
+`import 本地目录 新cap名称 --kind markdown|files|code`通过operations/import归档后流式发送未压缩PAX tar至统一服务端接口，30分钟有界超时，不逐图片提交。markdown目录为README.md和assets/，files为说明.md和assets/，code为含SKILL.md与scripts/cli.mjs的实际Skill目录；导入不执行代码。使用系统tar，Windows可使用系统或Git for Windows附带的tar，不需额外工具链。客户端拒绝链接、特殊文件、运行/凭据目录和不兼容Windows的路径；归档前后核对文件与目录集合、版本签名，变化时在发送前失败。默认最多10000路径、512MiB单文件、2GiB总文件，服务端仍最终校验。目标必须全新，不覆盖、不自动挂载；成功返回标准cap与eventId。结果未知先查目标和原事件，不能重放导入。多个目录分别调用不构成跨cap原子事务。
 
 output.mjs默认JSON不改变小结果结构；字段选择后保留身份与版本/续读，页面预算从末尾减少完整记录并重算游标，正文按整行减少。不能安全分割的结果标记dataOmitted；具备行/候选游标时保留重试起点，不跳过未输出内容。run等结果没有stdout续读游标，不能通过分页取回被省略的输出。必要回执本身过大时整字段省略并记录omittedFields，不切断token或事件ID。read/details与guide主题的--raw输出所选正文，不附JSON或额外换行；超预算报错，不输出半份正文。正文行结束符按读取接口归一化，原件字节应通过get取得。
 

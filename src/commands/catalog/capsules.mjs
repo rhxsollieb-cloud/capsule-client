@@ -14,6 +14,11 @@ export const group = {
     help: "create 名称 [--kind 类别=text] [--description 简介] [--body 本地文件]\n单文件直接平铺保存，markdown/files/database/code拥有目录。code自动创建SKILL.md和scripts/cli.mjs；旧--engine/--entry仅允许node/scripts/cli.mjs固定值。",
   },
   {
+    name: "import", arity: [2,2], handler: "import",
+    options: { kind: text, description: text },
+    help: "import 本地目录 新cap名称 [--kind markdown|files|code --description 简述]\n一次流式归档导入全新cap并形成初始提交，不覆盖名称、不自动挂载。markdown为README.md+assets/，files为说明.md+assets/，code为完整Skill目录；不执行代码。拒绝链接、运行目录和凭据文件。使用系统或Git for Windows附带的tar；未知结果先查目标和eventId，不重放。",
+  },
+  {
     name: "copy", arity: [2,2], handler: "copy",
     options: { "token": version },
     help: "copy 源名称 副本名称 --token 源token\n复制源cap已保存版本为独立的新cap；只需读取源权限，非管理员可复制只读cap后编辑副本。单文件保留扩展名，不复制历史、权限或挂载，新cap默认edit。结果未知先查目标及eventId，不重放；成功后可另用mount挂载。",

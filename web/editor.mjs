@@ -47,6 +47,8 @@ export class TextEditor {
   }
   notify(cap, entry, dirty) { this.onDirty?.(cap.name, entry, dirty); }
   open(container, cap, entry, record) {
+    if (record.lines && (record.lines.from !== 1 || record.lines.nextLine !== null && record.lines.nextLine !== undefined || record.lines.truncated))
+      throw new Error("分页正文不能作为完整文件编辑或保存，请先完整载入。");
     this.close();
     const key = this.key(cap.name, entry);
     let draft = this.drafts.get(key);

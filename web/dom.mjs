@@ -12,12 +12,16 @@ export function button(text, handler, className = "button secondary") {
   return element;
 }
 
-export function replace(element, ...children) {
-  for (const media of element.querySelectorAll("audio, video")) {
-    media.pause();
+export function releaseMedia(element, { images = false } = {}) {
+  for (const media of element.querySelectorAll(images ? "audio, video, img" : "audio, video")) {
+    media.pause?.();
     media.removeAttribute("src");
-    media.load();
+    media.load?.();
   }
+}
+
+export function replace(element, ...children) {
+  releaseMedia(element);
   element.replaceChildren(...children.filter(Boolean));
 }
 

@@ -23,6 +23,7 @@ import { leaseCommand } from "./leases.mjs";
 import { leasedApi } from "../operations/leases.mjs";
 import { authCommand } from "./auth.mjs";
 import { copyCommand } from "./copy.mjs";
+import { importCommand } from "./import.mjs";
 
 const handlers = {
   auth: authCommand,
@@ -31,6 +32,7 @@ const handlers = {
   activity: (api, args) => readActivity(api, { name: args.positional[0] }),
   capsule: capsuleCommand,
   copy: copyCommand,
+  import: importCommand,
   data: dataCommand,
   details: detailsCommand,
   discovery: discoveryCommand,

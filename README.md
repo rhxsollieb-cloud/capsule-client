@@ -145,6 +145,17 @@ node src/cli.mjs run 求和工具 -- 2 3
 
 Git对象和缓存原件位于cache/，版本元数据、缓存头、Skill登记和运行记录由顶层client.sqlite维护。run从所选提交的独立work副本启动固定CLI，使用持久state；它不复用注册work中的依赖。工作目录、环境和直接CLI调用的区别见[Skill说明](docs/skills.md)。
 
+## 目录导入与大书阅读
+
+```sh
+node src/cli.mjs import /本地/书稿目录 完整书稿.md --kind markdown --description 书稿与配图
+node src/cli.mjs import /本地/Skill目录 书籍处理 --kind code
+```
+
+Markdown目录必须包含README.md，配图等自有原件位于assets/；files目录使用说明.md与assets/；code目录包含有效SKILL.md和scripts/cli.mjs。导入前准备干净目录，不包含.git、.env、依赖或本机运行材料。客户端检查来源、创建本机临时未压缩PAX归档、流式上传，服务端一次创建独立cap及初始提交；不覆盖已有名称、不自动挂载或运行。需要系统tar（Windows可使用系统或Git附带版本）；最多2GiB、10000文件，单文件512MiB。具体布局与失败恢复见[导入契约](../capsule-server/docs/import.md)，未知结果先查询目标与原事件，不重放导入。
+
+工作台对长文字分页呈现，只渲染当前段及其图片，并支持行号跳转；只在完整载入且满足编辑预算时进入编辑，截断段不能直接保存。Markdown支持经过消毒的原书表格和锚点；附件始终限定当前cap。正文read/details按服务端nextLine续读，大文件本身不限1MiB，单次JSON仍有1MiB预算。全局搜索与query维持原有扫描边界，不能据此宣称已检索全书。
+
 ## 单文件与元数据
 
 单文件可直接按名称get/put；目录型内容使用原生entry。CLI create默认text，图形新建默认Markdown，两者均可显式选kind。Markdown、SQLite媒体区、统一详述来源和Skill形态见[数据规范](docs/data-format.md)，不在cap内建立第二份登记。

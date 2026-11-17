@@ -1,0 +1,7 @@
+.paged-reader { min-height: 0; }
+.reader-controls { display: flex; align-items: center; gap: 8px; padding: 5px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.reader-controls .button { font-size: 12px; padding: 4px 9px; }
+.reader-range { font-size: 12px; margin-right: auto; }
+.reader-line { width: 86px; min-height: 26px; padding: 3px 6px; }
+.reader-note { margin: 0; padding: 0 20px; font-size: 12px; }
+.reader-note:not(:empty) { padding-top: 8px; padding-bottom: 8px; }

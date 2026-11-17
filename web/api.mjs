@@ -126,9 +126,14 @@ async function readPages(operation, name, entry, isCurrent) {
       throw new Error("读取期间内容已变化，请刷新后重试；已有草稿保留。");
     record = next;
     parts.push(next.body);
+    if (new TextEncoder().encode(parts.join("\n")).length > 1024 * 1024)
+      throw Object.assign(new Error("全文超过在线编辑提交大小，继续使用分段阅读或下载原件；不会把当前分段保存为整本。"), { status: 413 });
     from = next.lines.nextLine;
   } while (from !== null && from !== undefined);
-  return { ...record, body: parts.join("\n") };
+  const body = parts.join("\n");
+  if (new TextEncoder().encode(JSON.stringify({ body })).length > 1024 * 1024 - 8192)
+    throw Object.assign(new Error("全文超过在线编辑提交大小，请继续分段阅读或下载原件。"), { status: 413 });
+  return { ...record, body, lines: { from: 1, to: record.lines.total, total: record.lines.total, nextLine: null, truncated: false } };
 }
 
 export function readText(name, entry, isCurrent) { return readPages("read", name, entry, isCurrent); }

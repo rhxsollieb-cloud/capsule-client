@@ -3,7 +3,14 @@ import { contentUrl } from "./api.mjs";
 import { node } from "./dom.mjs";
 import { capsuleEntry, embeddedKind } from "./markdown-paths.mjs";
 
-const parser = markdownit({ html: false, linkify: false, typographer: false });
+const parser = markdownit({ html: true, linkify: false, typographer: false });
+const safeHtml = (source) => DOMPurify.sanitize(source, {
+  ALLOWED_TAGS: ["table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "br", "a"],
+  ALLOWED_ATTR: ["id", "colspan", "rowspan", "scope"],
+  ALLOW_DATA_ATTR: false,
+});
+parser.renderer.rules.html_block = (tokens, index) => safeHtml(tokens[index].content);
+parser.renderer.rules.html_inline = (tokens, index) => safeHtml(tokens[index].content);
 parser.renderer.rules.image = (tokens, index) => {
   const token = tokens[index];
   const source = parser.utils.escapeHtml(token.attrGet("src") || "");
@@ -49,7 +56,7 @@ function mediaAttachment(placeholder, { name, entry }) {
   placeholder.replaceWith(figure);
 }
 
-function localLink(link, { name, entry, onOpenEntry }, article) {
+function localLink(link, { name, entry, onOpenEntry, onAnchor }, article) {
   const href = link.getAttribute("href") || "";
   if (/^https:\/\//i.test(href)) {
     link.target = "_blank";
@@ -60,7 +67,8 @@ function localLink(link, { name, entry, onOpenEntry }, article) {
     link.addEventListener("click", (event) => {
       event.preventDefault();
       const target = [...article.querySelectorAll("[id]")].find((element) => element.id === href.slice(1));
-      target?.scrollIntoView({ block: "start" });
+      if (target) target.scrollIntoView({ block: "start" });
+      else onAnchor?.(href.slice(1));
     });
     return;
   }
