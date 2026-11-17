@@ -10,7 +10,7 @@ import { initializeTheme } from "./theme.mjs";
 import { LibraryShell } from "./shell.mjs";
 import { LibraryManagement } from "./library-management.mjs";
 import { Administration } from "./admin.mjs";
-import { canCreate, setIdentity } from "./permissions.mjs";
+import { canCreate, currentIdentity, setIdentity } from "./permissions.mjs";
 import { startPolling } from "./polling.mjs";
 import { Connection } from "./connection.mjs";
 import { identityChangeProof } from "./identity-transition.mjs";
@@ -127,12 +127,13 @@ const tree = new KnowledgeTree(document.getElementById("tree"), {
 });
 
 function applyIdentity(identity) {
+  const changed = JSON.stringify(currentIdentity()) !== JSON.stringify(identity);
   if (identity?.principal) lastPrincipal = identity.principal;
   setIdentity(identity);
   shell?.setIdentity(identity);
   workspace.permissionsChanged();
   inspector.permissionsChanged();
-  tree.render();
+  if (changed) tree.render();
 }
 const administration = new Administration({ onError, onIdentity: applyIdentity, getCap: () => workspace.cap });
 function hasDrafts() {
@@ -208,6 +209,7 @@ async function connectNow() {
   }
 }
 startPolling(() => Promise.all([workspace.refresh(), inspector.refresh()]), { interval: 5000, enabled: () => authenticated });
+startPolling(() => tree.refreshBackground(), { interval: 30000, enabled: () => authenticated });
 startPolling(async () => {
   try {
     const status = await connectionStatus();

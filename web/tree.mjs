@@ -2,6 +2,7 @@ import { action } from "./api.mjs";
 import { button, node, replace } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 import { TreeActions } from "./tree-actions.mjs";
+import { refreshTreeBackground } from "./tree-refresh.mjs";
 
 export class KnowledgeTree {
   constructor(element, { onSelect, onError, onEmpty, onViewChanged, onManage }) {
@@ -58,6 +59,7 @@ export class KnowledgeTree {
   async refresh() {
     clearTimeout(this.filterTimer);
     const request = ++this.request;
+    this.loadingRequest = request;
     const restorePages = this.restorePages;
     this.renderLoading();
     try {
@@ -65,6 +67,7 @@ export class KnowledgeTree {
       if (request !== this.request) return;
       this.items = result.items;
       this.nextOffset = result.nextOffset;
+      this.total = result.total;
       const expandedPaths = this.isTreeView() ? [...this.expanded.keys()] : [];
       const children = await Promise.allSettled(expandedPaths.map((path) => this.fetchRange((offset) => action("ls", { path, limit: 50, offset }), restorePages?.children.get(path) || 0, request)));
       if (request !== this.request) return;
@@ -82,8 +85,11 @@ export class KnowledgeTree {
       if (request !== this.request) return;
       replace(this.element, node("p", "tree-message error-message", error.message), button("重试", () => this.refresh(), "button ghost"));
       this.onError(error);
+    } finally {
+      if (this.loadingRequest === request) this.loadingRequest = undefined;
     }
   }
+  refreshBackground() { return refreshTreeBackground(this); }
   fetchPage(offset) {
     return this.isTreeView()
       ? action("ls", { path: "/", limit: 50, offset })
@@ -109,6 +115,7 @@ export class KnowledgeTree {
       if (request !== this.request) return;
       this.items.push(...result.items);
       this.nextOffset = result.nextOffset;
+      this.total = result.total;
       this.render();
     } catch (error) { if (request === this.request) this.onError(error); }
     finally { if (this.moreLoading === request) this.moreLoading = undefined; }
@@ -121,15 +128,16 @@ export class KnowledgeTree {
       return;
     }
     const request = this.request;
-    this.expanded.set(item.path, { loading: true });
+    const loading = { loading: true };
+    this.expanded.set(item.path, loading);
     this.render();
     try {
       const result = await action("ls", { path: item.path, limit: 50 });
-      if (request !== this.request || !this.expanded.has(item.path)) return;
+      if (request !== this.request || this.expanded.get(item.path) !== loading) return;
       this.expanded.set(item.path, result);
       this.render();
     } catch (error) {
-      if (request !== this.request) return;
+      if (request !== this.request || this.expanded.get(item.path) !== loading) return;
       this.expanded.delete(item.path);
       this.render();
       this.onError(error);
@@ -137,13 +145,17 @@ export class KnowledgeTree {
   }
   async moreChildren(item) {
     const previous = this.expanded.get(item.path);
+    this.pendingChildren ||= new Set();
+    if (!previous || this.pendingChildren.has(item.path)) return;
+    this.pendingChildren.add(item.path);
     const request = this.request;
     try {
       const result = await action("ls", { path: item.path, limit: 50, offset: previous.nextOffset });
-      if (request !== this.request || !this.expanded.has(item.path)) return;
+      if (request !== this.request || this.expanded.get(item.path) !== previous) return;
       this.expanded.set(item.path, { ...result, items: [...previous.items, ...result.items] });
       this.render();
     } catch (error) { if (request === this.request) this.onError(error); }
+    finally { this.pendingChildren.delete(item.path); }
   }
   choose(item) {
     if (this.filterSnapshot && item.name !== this.filterSnapshot.selected?.name) this.filterSnapshot.selectionChanged = true;
