@@ -3,6 +3,7 @@ import { button, node, replace, releaseMedia } from "./dom.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { canEdit } from "./permissions.mjs";
 import { readSection } from "./reader-pages.mjs";
+import { bindReaderShortcuts } from "./reader-shortcuts.mjs";
 
 export class PagedTextReader {
   constructor(container, cap, entry, { initial, isCurrent, onError, onOpenEntry, onFullEdit, onRead, markdown }) {
@@ -13,23 +14,36 @@ export class PagedTextReader {
     this.wrapper = node("div", "paged-reader");
     this.previous = button("上一段", () => this.back(), "button secondary");
     this.next = button("下一段", () => this.go(this.record.lines.nextLine), "button secondary");
+    this.previous.title = "上一段（←）";
+    this.previous.setAttribute("aria-keyshortcuts", "ArrowLeft");
+    this.next.title = "下一段（→）";
+    this.next.setAttribute("aria-keyshortcuts", "ArrowRight");
     this.range = node("span", "reader-range");
     this.line = node("input", "property-input reader-line");
     this.line.type = "number"; this.line.min = "1"; this.line.value = "1";
     this.line.setAttribute("aria-label", "跳转到行");
     const jump = button("跳转", () => this.seekLine(Number(this.line.value)), "button ghost");
-    const controls = node("div", "reader-controls");
+    const controls = node("nav", "reader-controls");
+    controls.setAttribute("aria-label", "阅读分页");
     controls.append(this.previous, this.next, this.range, this.line, jump);
     this.note = node("p", "reader-note"); this.note.setAttribute("role", "status");
     this.body = node("div", "reading-surface reader-surface");
-    this.wrapper.append(controls, this.note, this.body);
+    this.body.tabIndex = 0;
+    this.body.setAttribute("role", "region");
+    this.body.setAttribute("aria-label", "分段正文");
+    this.wrapper.append(this.note, this.body, controls);
     replace(container, this.wrapper);
+    this.unbindShortcuts = bindReaderShortcuts(this);
+    this.controlsResize = new ResizeObserver(() => {
+      this.wrapper.style.setProperty("--reader-controls-height", `${controls.offsetHeight}px`);
+    });
+    this.controlsResize.observe(controls);
     this.ready = this.go(initial.lines.from, { initial, push: false });
   }
   active() { return !this.destroyed && this.isCurrent(); }
   controlsInfo() {
     return { state: "clean", mode: "read", detail: this.range.textContent || "正在读取分段",
-      helpText: "分段阅读仅加载当前段落和配图。完整载入以编辑会先核对全文、版本及提交大小；分段不会作为整本正文保存。",
+      helpText: "分段阅读仅加载当前段落和配图。阅读时←上一段、→下一段；输入框和菜单中不翻页。完整载入以编辑会先核对全文、版本及提交大小；分段不会作为整本正文保存。",
       moreItems: canEdit(this.cap) ? [{ label: "完整载入以编辑", disabled: this.busy, action: () => this.editEntire() }] : [] };
   }
   updatePermissions(cap) { this.cap = { ...this.cap, permissions: cap.permissions }; }
@@ -75,8 +89,13 @@ export class PagedTextReader {
   }
   back() {
     if (this.busy || !this.history.length) return;
-    const from = this.history.pop();
-    return this.go(from, { push: false });
+    const from = this.history.at(-1);
+    return this.run(async (signal) => {
+      const record = await this.page(from, signal);
+      if (!this.active()) return;
+      this.display(record, { push: false });
+      this.history.pop();
+    });
   }
   async sectionFor(line, signal) {
     let from = 1;
@@ -118,5 +137,11 @@ export class PagedTextReader {
       if (record && this.active()) await this.onFullEdit(record);
     });
   }
-  destroy() { this.destroyed = true; this.controller?.abort(); releaseMedia(this.body, { images: true }); }
+  destroy() {
+    this.destroyed = true;
+    this.controller?.abort();
+    this.unbindShortcuts();
+    this.controlsResize.disconnect();
+    releaseMedia(this.body, { images: true });
+  }
 }
