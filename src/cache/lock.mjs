@@ -42,9 +42,10 @@ async function release(file, identity, info) {
   await unlink(file);
 }
 
-export async function withCacheLock(file, operation, { timeoutMs = 30000, pollMs = 50 } = {}) {
+export async function withCacheLock(file, operation, { timeoutMs = 30000, pollMs = 50, signal } = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0 || !Number.isFinite(pollMs) || pollMs <= 0)
     throw new Error("缓存锁等待范围无效");
+  signal?.throwIfAborted();
   await mkdir(dirname(file), { recursive: true });
   const identity = { pid: process.pid, token: randomUUID() };
   const claim = file + "." + identity.token + ".claim";
@@ -56,6 +57,7 @@ export async function withCacheLock(file, operation, { timeoutMs = 30000, pollMs
     const deadline = performance.now() + timeoutMs;
     let attempted = false;
     while (!acquired) {
+      signal?.throwIfAborted();
       if (attempted && performance.now() >= deadline)
         throw lockError(`这个胶囊正在同步或读取缓存，等待超时，请稍后查询重试：${file}`, "CACHE_BUSY");
       attempted = true;
@@ -68,9 +70,10 @@ export async function withCacheLock(file, operation, { timeoutMs = 30000, pollMs
         alive(owner, file);
         const remaining = deadline - performance.now();
         if (remaining <= 0) throw lockError(`这个胶囊正在同步或读取缓存，等待超时，请稍后查询重试：${file}`, "CACHE_BUSY");
-        await delay(Math.min(pollMs, remaining));
+        await delay(Math.min(pollMs, remaining), undefined, { signal });
       }
     }
+    signal?.throwIfAborted();
     result = await operation();
   } catch (error) { primaryError = error; }
   let releaseError;

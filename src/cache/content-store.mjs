@@ -42,13 +42,13 @@ export class ContentCache {
     return { key, name, entry: entry ?? "", file: key + ".bin" };
   }
   async prepare() { directory(this.root); directory(this.files); directory(join(this.root, "locks")); }
-  async entry(identity, operation) {
+  async entry(identity, operation, { signal } = {}) {
     await this.prepare();
-    return withCacheLock(join(this.root, "locks", identity.key + ".lock"), operation);
+    return withCacheLock(join(this.root, "locks", identity.key + ".lock"), operation, { signal });
   }
-  async index(operation) {
+  async index(operation, { signal } = {}) {
     await this.prepare();
-    return withCacheLock(join(this.root, "index.lock"), () => withClientDatabase(this.config.home, (database) => { schema(database); this.recoverFiles(database); return operation(database); }));
+    return withCacheLock(join(this.root, "index.lock"), () => withClientDatabase(this.config.home, (database) => { schema(database); this.recoverFiles(database); return operation(database); }), { signal });
   }
   recoverFiles(database) {
     const registered = new Set(database.prepare("SELECT * FROM content_cache").all().map((row) => { this.path(row); return row.file; }));
@@ -73,7 +73,7 @@ export class ContentCache {
       unlinkSync(file);
     } catch (error) { if (error.code !== "ENOENT") throw error; }
   }
-  async read(identity, maximum) {
+  async read(identity, maximum, { signal } = {}) {
     return this.index((database) => {
       const row = database.prepare("SELECT * FROM content_cache WHERE cache_key=?").get(identity.key);
       if (!row) return undefined;
@@ -104,9 +104,10 @@ export class ContentCache {
       }
       database.prepare("UPDATE content_cache SET last_used=? WHERE cache_key=?").run(tick(database), identity.key);
       return { bytes, etag: row.etag };
-    });
+    }, { signal });
   }
-  async publish(identity, bytes, etag) {
+  async publish(identity, bytes, etag, { signal } = {}) {
+    signal?.throwIfAborted();
     if (!Buffer.isBuffer(bytes) || bytes.length > this.limits.fileBytes || !strongContentTag(etag)) return false;
     if (!matchesContentTag(bytes, etag)) throw Object.assign(new Error("原件字节与服务端ETag不符，缓存未发布"), { status: 502, code: "CONTENT_INTEGRITY" });
     return this.index((database) => {
@@ -135,6 +136,6 @@ export class ContentCache {
         } catch (error) { database.exec("ROLLBACK"); throw error; }
       } finally { if (fd !== undefined) closeSync(fd); if (existsSync(temporary)) unlinkSync(temporary); }
       return true;
-    });
+    }, { signal });
   }
 }

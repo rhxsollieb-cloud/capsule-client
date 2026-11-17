@@ -5,7 +5,8 @@ import { pipeline } from "node:stream/promises";
 import { capsuleName, entryPath } from "../system/paths.mjs";
 import { uiError } from "./errors.mjs";
 import { leasedApi } from "../operations/leases.mjs";
-import { revalidatedContent } from "../cache/content.mjs";
+import { assertContentVersion, expectedContentToken, revalidatedContent } from "../cache/content.mjs";
+import { browserReadSignal } from "./read-signal.mjs";
 
 const previewTypes = new Map([
   [".jpg", "image/jpeg"], [".jpeg", "image/jpeg"], [".png", "image/png"],
@@ -26,16 +27,24 @@ function target(url) {
 }
 
 export async function sendMedia(request, response, url, api) {
+  const read = browserReadSignal(request, response);
+  try { return await pipeMedia(request, response, url, api, read.signal); }
+  finally { read.dispose(); }
+}
+
+async function pipeMedia(request, response, url, api, signal) {
   const { name, entry } = target(url);
+  const expectedToken = expectedContentToken(url.searchParams.get("version") ?? undefined);
   const conditionals = Object.fromEntries(["range", "if-range", "if-match", "if-none-match"]
     .filter((header) => request.headers[header] !== undefined).map((header) => [header, request.headers[header]]));
   // A small Range must never trigger a full-file prefetch. Browser validators
   // also go directly to the authority, so large cached files can return zero bytes.
   const source = request.method === "HEAD" || Object.keys(conditionals).length
     ? await api.response(api.path(name, "content", { entry }), {
-      method: request.method, headers: conditionals, signal: AbortSignal.timeout(30 * 60 * 1000),
+      method: request.method, headers: conditionals, signal,
     }, { allowNotModified: Boolean(request.headers["if-none-match"]) })
-    : (await revalidatedContent(api, name, entry, { allowStreaming: true })).response;
+    : (await revalidatedContent(api, name, entry, { allowStreaming: true, signal, expectedToken })).response;
+  await assertContentVersion(source, expectedToken);
   if (!source.body && source.status !== 304 && request.method !== "HEAD") throw uiError("原件内容为空", 502);
   const filename = basename(entry || name);
   const type = previewTypes.get(extname(filename).toLowerCase());
@@ -58,7 +67,7 @@ export async function sendMedia(request, response, url, api) {
   if (source.status === 304) { delete headers["content-length"]; delete headers["content-range"]; }
   response.writeHead(source.status, headers);
   if (source.status === 304 || request.method === "HEAD") { await source.body?.cancel(); response.end(); }
-  else await pipeline(Readable.fromWeb(source.body), response);
+  else await pipeline(Readable.fromWeb(source.body), response, { signal });
 }
 
 export async function uploadMedia(request, url, api, maximum) {
