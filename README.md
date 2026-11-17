@@ -27,6 +27,8 @@ npm start -- help
 
 配置按环境变量传入。默认工作区随客户端安装位置定位；显式设置相对的CAPSULE_CLIENT_HOME时按启动目录解析，跨入口使用同一工作区应配置绝对路径。上传限额等图形服务配置见[界面说明](docs/ui.md)。
 
+连接腾讯云时使用独立的本机5185工作台及受保护连接文件，API与Office通过HTTPS访问远端；配置和启动命令见[腾讯云连接](docs/tencent-connection.md)。
+
 ## 图形工作台
 
 先在服务端项目运行npm start，再在客户端项目启动界面。
