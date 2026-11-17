@@ -31,7 +31,9 @@
 
 名称、kind与最多180字符的简述用于轻量列表。详述按需通过details读取；文字类复用正文，不保存第二份详情。媒体/Office等只在顶层保存一份details，详述修改也受token与版本保护。属性弹窗按Markdown呈现，保存的仍是原始文本。
 
-员工、凭据、cap授权、审计与备份登记也在服务端顶层SQLite，分别用access_*和backup_records维护，不增加cap内部登记或Git字段。先用me核对个人身份；admin管理全库，editor/viewer按cap授权访问。响应permissions是当前主体的能力投影，不能由客户端自行授予。授权按cap key与incarnation判断，多处挂载共用权限，同名重建不继承授权。列表与搜索先过滤不可读实体，404不能用于区分未授权与不存在。身份、授权及备份命令见[管理说明](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
+员工、密码哈希、登录会话与兼容长期凭据摘要、cap非管理员三档权限、审计和备份登记都在服务端顶层SQLite，由access_*及backup_records维护，不增加cap内部登记或Git字段。人和Agent都通过连接页或CLI login使用同一用户名密码登录，默认共享本机配置的12小时会话及权限；Agent非交互从--password-file文件或-读取密码，不传明文argv。先用me核对实际身份，身份保存与切换见[登录说明](login.md)。
+
+账户分admin和普通员工editor。admin管理全库；cap统一为全部非管理员设置read/edit/none，新cap默认edit。不逐员工授权。所有挂载共用同一cap权限，不继承父节点，同名重建不继承旧规则，内容回撤也不改变权限。只读可下载并复制，副本有独立数据和Git、默认读写；无访问隐藏源cap并拒绝读取、下载与复制。响应permissions是当前主体能力投影，不能由客户端自行授予。精确规则及备份见[管理说明](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
 
 当前stat的公开记录示意如下，commit/token的示意文字不能直接用于请求；非code不带runtime。虚拟位置、详述全文和本机运行状态均按需另查，不堆进每条概要。
 
@@ -78,7 +80,7 @@ revert按目标commit恢复内容和当时元数据，然后生成新提交，�
 
 断链只移除当前叶挂载，保留cap及版本；清除删除整个cap、全部挂载和独立Git，不能通过revert找回。清除前核对阻止原因和完整范围；有子挂载、未完事件或活跃Office时可能被拒绝。
 
-永久清除、全局位置organize及其回执只允许admin。员工、凭据和授权各用自身revision，不能拿cap token代替。凭据撤销、员工禁用或授权降低在请求和实际写入/队列执行前重查；审计以实际主体及eventId归因，不保存正文与令牌。Office只读使用view配置，保存同样核对原身份与版本。
+永久清除、全局位置organize及其回执只允许admin。员工和凭据各用自身revision；cap三档访问使用自己的revision，不能拿cap token代替。凭据撤销、登录会话到期、员工禁用或权限改变在请求和实际写入/队列执行前重查；审计以实际主体、credentialId及eventId归因，不保存正文、密码与令牌。权限降为只读或无访问会使旧编辑占用失效，不因重新开放而复活；Office只读使用view配置，保存仍核对原身份与版本。
 
 ## SQLite、媒体和日志
 

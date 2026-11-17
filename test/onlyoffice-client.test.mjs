@@ -64,7 +64,7 @@ test("Office桥接固定源CSP、会话校验与恢复下载沿用已有读取�
   assert.equal(JSON.stringify(result).includes(config.token), false);
   assert.equal((await action({ action: "office-save", id })).status, 200);
   assert.equal((await action({ action: "office-session", id })).status, 200);
-  const restored = await fetch(ui.url + "/ui/office/recovery?" + new URLSearchParams({ id }));
+  const restored = await fetch(ui.url + "/ui/office/recovery?" + new URLSearchParams({ id, session: session.csrfToken }));
   assert.equal(await restored.text(), "saved-office-bytes");
   assert.match(restored.headers.get("Content-Disposition"), /^attachment/);
   const before = calls.length;

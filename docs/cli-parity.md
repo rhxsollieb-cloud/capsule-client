@@ -6,6 +6,7 @@
 
 | 能力 | 当前覆盖 | 边界 |
 | --- | --- | --- |
+| 连接与登录 | connection/login/logout/password-change、me/whoami | 前端与CLI共用Authentication和ConnectionStore；隐藏输入或密码文件，不保存密码；人和Agent统一账户密码、默认共享同一配置的12h会话与权限，Agent非交互用--password-file文件或- |
 | cap创建、概要、正文、原件、详述与清除 | create/stat/update/read/put/get/details/write-details/removal/delete | 实体token和挂载token分开；清除预览后入队，已清除cap不能用revert恢复 |
 | 虚拟位置 | ls/mount/position/move/unmount/where | where列出实体全部挂载；移动作用于位置子树，原件不跟随虚拟路径搬动 |
 | 位置批量规划 | organize inspect/dry-run/apply/receipt | 仅mount/move/unmount；顺序规划依赖，同一目录事务提交。没有把多cap内容创建/更新冒充同一原子事务 |
@@ -23,14 +24,18 @@
 | 编辑占用 | lease-status/acquire/renew/release及写命令--lease | 与前端共用operations/leases；cap级20秒租约，5秒续期，完成立即释放；原版本token继续校验，见[并发说明](../../capsule-server/docs/concurrency.md) |
 | Office与数据库 | 独立Office会话与提取/批处理、SQLite查询/表格写入 | 复用对应业务模块，格式与保存边界由Office及数据库说明维护 |
 | Skill | 固定CLI、精确提交运行、本机注册及可选协作界面 | 依赖与工具业务归Skill自身，客户端不假定仅支持Node内置依赖，不自动安装依赖 |
-| 员工、权限与审计 | me/users/user-create/user-update/credentials/credential-create/credential-revoke/grants/grant-set/audit | 同一admin operations供CLI与界面使用；个人凭据原文仅签发一次，授权revision与正文token分开 |
+| 员工、权限与审计 | me/whoami/users/user-create/user-update/credentials/credential-create/credential-revoke/cap-access/grants/cap-protect/audit | 账户仅admin/editor；cap统一非管理员read/edit/none，携权限revision；旧个人grant-set停用，不静默扩大为全员授权 |
 | 整库备份与恢复 | backups/backup-create/backup-inspect/backup-register/backup-verify/backup-download/backup-restore-preview/backup-restore/backup-receipt | 管理员维护屏障快照、独立校验、外存目录认领及隔离恢复；不自动覆盖运行库或切换服务 |
 
 ## 命令与共享操作
 
-src/commands/catalog/按胶囊、正文、数据库、位置、版本、Office、Skill、诊断划分声明；每条只有一份名称、参数类型/范围、必需标记、位置参数数量、帮助、组和处理器归属。catalog初始化拒绝重名。specification和help投影同一声明，dispatch只选择业务处理器；跨参数依赖保留在validation。
+src/commands/catalog/按身份连接、胶囊、正文、数据库、位置、版本、Office、Skill、诊断划分声明；每条只有一份名称、参数类型/范围、必需标记、位置参数数量、帮助、组和处理器归属。catalog初始化拒绝重名。specification和help投影同一声明，dispatch只选择业务处理器；跨参数依赖保留在validation。
 
-CLI把位置参数和文件/标准输入转换成规范对象，src/operations/负责发现、位置组织、活动和文字替换等协议操作，BFF复用这些操作。Skill管理命令经专门本机通道调用SkillManager；其余CLI业务不依赖BFF action分发，也不直接修改服务端目录或登记SQLite。服务端继续负责权限、最终版本校验和持久事务。
+CLI把位置参数和文件/标准输入转换成规范对象，src/operations/负责发现、位置组织、活动、文字替换和身份协议，BFF复用这些操作。连接、登录、退出、改密优先使用同配置的本机桥接；未发现匹配桥接时才独立调用Authentication，POST发送后的失败不回退重放。Skill管理命令经专门本机通道调用SkillManager；其他知识读写直接调用统一服务端API，不依赖BFF action分发，也不直接修改服务端目录或登记SQLite。服务端负责权限、最终版本校验和持久事务。
+
+connection保存地址，login隐藏交互输入密码或用--password-file文件/stdin；password-change对应当前/新密码文件参数，用户管理通过--username与--password-file设置或重设登录。默认输出不含登录会话令牌；会话保存在当前用户的私有connection.sqlite，前端与Agent CLI默认共用。显式CAPSULE_TOKEN仅为兼容旧脚本保留CLI优先级，whoami返回实际身份；图形工作台忽略该长期令牌。连接路径、密码要求、草稿及外部切换规则见[登录说明](login.md)。
+
+账户只有管理员和普通员工。cap-access读取或携--permission read/edit/none与--revision设置整个cap的非管理员访问，不逐员工授权。grants为读取别名，cap-protect保留布尔兼容映射none/edit；旧grant-set明确拒绝。普通员工可复制任何可读cap为新的独立可编辑cap，源只读不影响复制，源无访问则拒绝。
 
 `capsule help`先列能力组，`capsule help content`或`capsule help read`再展开；追加--json返回机器声明。帮助在解析配置与连接服务前完成，不触发业务初始化。
 
@@ -44,7 +49,7 @@ output.mjs默认JSON不改变小结果结构；字段选择后保留身份与版
 
 --out在执行前检查目标不存在，完成后以同目录临时文件和hardlink发布所选字段的完整JSON，不覆盖既有文件、不留半份JSON；它不自动读取剩余页。输出失败不等于业务未执行，应先核对回执。run会尝试把结果保存到client.sqlite，本机日志失败会有logError，不能保证结果已持久化；事前可用--out，不能为取更多stdout重跑有副作用的Skill。
 
-user-create和credential-create可能只返回一次个人凭据，调用前拒绝--fields；显式小于2048字符的输出预算须改用--out或增大预算，避免执行后才遗漏唯一令牌。这两类--out文件以0600权限发布，成功时stdout只返回文件回执；若签发已完成而保存文件失败，失败回执会保留一次性令牌并提醒立即保存，应按敏感响应处理。不能把输出失败理解为未签发并直接重做。
+user-create和credential-create可能只返回一次个人凭据，调用前拒绝--fields；显式小于2048字符的输出预算须改用--out或增大预算，避免执行后才遗漏唯一令牌。这两类--out文件以0600模式发布，Windows 则须将输出目录放在当前用户的 NTFS 私有目录，不能把该模式视为已设置 NTFS ACL。成功时stdout只返回文件回执；若签发已完成而保存文件失败，失败回执会保留一次性令牌并提醒立即保存，应按敏感响应处理。不能把输出失败理解为未签发并直接重做。
 
 默认stdout为JSON结果/必要事件回执，stderr为宿主异常诊断。--json-errors在捕获宿主异常时输出机器错误，保留HTTP status、code、eventId及uncertain/unknownResult。Skill子进程非零或logError仍返回普通run回执并非零退出，不自动包装error，也不代表没有执行。已知CAPSULE_TOKEN在配置前参数错误及宿主错误输出中隐藏。run的--之后原样交给Skill，不把Skill的--help或--json-errors当宿主参数。
 
@@ -69,6 +74,6 @@ dry-run和apply使用同一规划器及基线校验，apply的offset必须为0�
 
 整库备份经服务端维护屏障生成catalog、原件、Git和必要恢复资料的一致快照；每cap bundle、本机缓存或单文件下载不能替代它。backup-restore仅生成隔离工作区，生产切换、异机存储、周期调度、自动保留和客户端本机state备份仍由独立运维流程负责，见[备份恢复](../../capsule-server/docs/backups.md)。
 
-尚未实现cap复制、改名、通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查已登记挂载，不把挂载推断为来源或共享数据。复制若后续实现，应生成独立cap内容与Git。
+copy 源cap 副本名称 --token 源token生成独立原件和新Git历史，不继承挂载或源权限；创建完成后可用mount另行组织。只读源也可复制，无访问源拒绝。未知结果先查询副本及事件，不自动重提；具体见[复制说明](../../capsule-server/docs/copy.md)。尚未实现改名、通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查挂载，不把挂载推断为来源或共享数据。
 
 视频生成、时间轴组合、混音、模型资产、供应商作业恢复与达芬奇交接属于VideoSeed领域能力，不作为知识库CLI缺口。机器JSON帮助和稳定结构化错误是本项目增强；没有声称VideoSeed已有同名机器接口或所有领域能力均已1:1迁移。

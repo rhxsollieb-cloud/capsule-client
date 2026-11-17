@@ -84,7 +84,7 @@ test("工作台与CLI共用版本保护、回撤队列及原件接口", {
   });
   assert.equal(upload.status, 200, await upload.text());
   const ranged = await fetch(`${ui.url}/ui/content?name=${encodeURIComponent(image.name)}`, {
-    headers: { Range: "bytes=1-3" },
+    headers: { Range: "bytes=1-3", "X-Capsule-Session": session.csrfToken },
   });
   assert.equal(ranged.status, 206);
   assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), bytes.subarray(1, 4));

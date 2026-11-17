@@ -16,9 +16,27 @@ async function payload(response) {
 
 export async function initialize() {
   const session = await payload(await fetch("/ui/session", { cache: "no-store" }));
+  const sessionChanged = csrfToken !== undefined && csrfToken !== session.csrfToken;
   inflight.clear();
   csrfToken = session.csrfToken;
-  return session;
+  return { ...session, sessionChanged };
+}
+
+export function isSessionFailure(error) {
+  return error?.status === 401 || error?.status === 403 && /本地会话已失效/u.test(error.message || "");
+}
+
+export function connectionStatus() {
+  return fetch("/ui/auth/status", { cache: "no-store" }).then(payload);
+}
+
+export function connectionAction(operation, values = {}) {
+  inflight.clear();
+  return fetch(`/ui/auth/${operation}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Capsule-Session": csrfToken },
+    body: JSON.stringify(values),
+  }).then(payload);
 }
 
 export async function action(name, fields = {}, { signal, keepalive = false, lease } = {}) {
@@ -55,7 +73,33 @@ export function contentUrl(name, entry, download = false) {
   const query = new URLSearchParams({ name });
   if (entry !== undefined) query.set("entry", entry);
   if (download) query.set("download", "1");
-  return `/ui/content?${query}`;
+  return sessionUrl("/ui/content", query);
+}
+
+export function sessionUrl(path, values) {
+  const query = new URLSearchParams(values);
+  if (csrfToken !== undefined) query.set("session", csrfToken);
+  return path + "?" + query;
+}
+
+export function rebindSessionUrls(root = globalThis.document, baseUrl = globalThis.location?.href || "http://capsule.local/") {
+  if (csrfToken === undefined || !root?.querySelectorAll) return 0;
+  const origin = new URL(baseUrl).origin;
+  const paths = new Set(["/ui/content", "/ui/office/recovery", "/ui/admin/backup-content"]);
+  let changed = 0;
+  for (const element of root.querySelectorAll("[src], [href]")) {
+    for (const attribute of ["src", "href"]) {
+      const raw = element.getAttribute(attribute);
+      if (!raw) continue;
+      let url;
+      try { url = new URL(raw, baseUrl); } catch { continue; }
+      if (url.origin !== origin || !paths.has(url.pathname) || url.searchParams.get("session") === csrfToken) continue;
+      url.searchParams.set("session", csrfToken);
+      element.setAttribute(attribute, raw.startsWith("/") ? url.pathname + url.search + url.hash : url.href);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 export async function upload(name, entry, file, token, { lease } = {}) {

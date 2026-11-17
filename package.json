@@ -13,13 +13,21 @@
   "scripts": {
     "start": "node src/cli.mjs",
     "build:web": "node scripts/build-web.mjs",
+    "package:client": "node scripts/package-client.mjs",
     "preui": "npm run build:web",
     "ui": "node src/ui/main.mjs",
     "pretest": "npm run build:web",
-    "test": "node --test --test-reporter=./test/quiet-reporter.mjs test/*.test.mjs",
+    "test": "node scripts/test.mjs",
+    "pretest:e2e": "npm run build:web",
+    "test:e2e": "playwright test",
+    "pretest:e2e:editing": "npm run build:web",
+    "test:e2e:editing": "playwright test test/e2e/editing.spec.mjs test/e2e/text-editing.spec.mjs test/e2e/database-editing.spec.mjs test/e2e/properties-editing.spec.mjs test/e2e/office-editing.spec.mjs",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:report": "playwright show-report .local/playwright/report",
     "check": "eslint ."
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "esbuild": "0.28.2",
     "eslint": "10.14.0",
     "globals": "16.4.0"

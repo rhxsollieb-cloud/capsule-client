@@ -3,5 +3,7 @@
 node_modules/
 web/vendor/
 coverage/
+playwright-report/
+test-results/
 *.log
 .DS_Store

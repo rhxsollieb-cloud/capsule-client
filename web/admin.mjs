@@ -1,7 +1,8 @@
 import { action, readIdentity } from "./api.mjs";
 import { button, node, replace } from "./dom.mjs";
 import { details, form, input, oneTimeCredential, pagination, roleLabels, rows, section } from "./admin-common.mjs";
-import { usersPage, grantsPage } from "./admin-users.mjs";
+import { usersPage } from "./admin-users.mjs";
+import { accessPage } from "./admin-access.mjs";
 import { backupsPage } from "./admin-backups.mjs";
 
 export class Administration {
@@ -35,7 +36,7 @@ export class Administration {
       try { await navigator.clipboard.writeText(value.control.value); copy.textContent = "已复制"; }
       catch { value.control.focus(); value.control.select(); copy.textContent = "请手动复制"; }
     });
-    replace(this.secretBox, section("请立即保存", node("p", "", "凭据仅显示这一次，切换页面或关闭窗口后无法找回。请将它配置到 CLI 与界面共用的 CAPSULE_TOKEN 环境，勿发送到聊天或提交Git。"), value.field, copy));
+    replace(this.secretBox, section("请立即保存", node("p", "", "这是兼容旧脚本的访问令牌，仅显示一次。人与 Agent 均可使用用户名密码登录，无需额外签发令牌；不要将此令牌发送到聊天或提交Git。"), value.field, copy));
   }
   async perform(operation, value, onResult, onFailure) {
     if (this.busy || !this.element.open) return;
@@ -69,11 +70,11 @@ export class Administration {
       replace(this.tabs, ...[["identity", "当前身份"], ...(manager ? [["users", "用户与凭据"], ["grants", "胶囊权限"], ["audit", "审计"], ["backups", "备份与恢复"]] : [])].map(([key, label]) => button(label, () => { if (!this.busy) this.load(key); }, `tab-button${tab === key ? " active" : ""}`)));
       if (tab !== "identity" && !manager) throw new Error("当前身份没有管理权限");
       if (tab === "users") await usersPage(context, offset);
-      else if (tab === "grants") await grantsPage(context);
+      else if (tab === "grants") await accessPage(context);
       else if (tab === "backups") await backupsPage(context, offset);
       else if (tab === "audit") await this.audit(context, offset);
       else replace(this.body, section("当前连接身份", details({ ...identity.principal, roleLabel: roleLabels[identity.principal?.role], permissions: identity.permissions }),
-        node("p", "property-note", "当前身份来自客户端进程配置的凭据。CLI 与页面使用同一环境配置；本页面不回显已有凭据，也不将新凭据存入浏览器。")));
+        node("p", "property-note", "人与 Agent 均通过用户名密码登录，CLI 默认复用本机当前会话。已有脚本仍可显式配置兼容访问令牌；本页面不回显已有令牌。")));
     } catch (error) { if (current()) { this.error(error); replace(this.body, node("p", "error-message", "读取未完成，请核对连接身份后重试。")); } }
   }
   async audit(context, offset) {

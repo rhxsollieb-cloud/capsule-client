@@ -14,6 +14,11 @@ export const group = {
     help: "create 名称 [--kind 类别=text] [--description 简介] [--body 本地文件]\n单文件直接平铺保存，markdown/files/database/code拥有目录。code自动创建SKILL.md和scripts/cli.mjs；旧--engine/--entry仅允许node/scripts/cli.mjs固定值。",
   },
   {
+    name: "copy", arity: [2,2], handler: "copy",
+    options: { "token": version },
+    help: "copy 源名称 副本名称 --token 源token\n复制源cap已保存版本为独立的新cap；只需读取源权限，非管理员可复制只读cap后编辑副本。单文件保留扩展名，不复制历史、权限或挂载，新cap默认edit。结果未知先查目标及eventId，不重放；成功后可另用mount挂载。",
+  },
+  {
     name: "stat", arity: [1,1], handler: "capsule",
     options: { "commit": text },
     help: "stat 名称 [--commit 提交号]\n取得当前概要与token，或读取指定提交的历史元数据。",

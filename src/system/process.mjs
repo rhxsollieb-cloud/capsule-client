@@ -6,6 +6,7 @@ export function execute(command, args, options = {}) {
       cwd: options.cwd,
       env: options.env || process.env,
       shell: false,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
       signal: options.signal,
     });
@@ -50,7 +51,10 @@ export async function git(args, cwd) {
   // Detached auto-maintenance would outlive fetch and race the following full integrity check.
   const result = await execute("git", [
     "-c", "maintenance.auto=false", "-c", "maintenance.autoDetach=false",
-    "-c", "gc.auto=0", "-c", "gc.autoDetach=false", ...args,
+    "-c", "gc.auto=0", "-c", "gc.autoDetach=false",
+    "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+    ...(process.platform === "win32" ? ["-c", "core.longpaths=true", "-c", "core.filemode=false", "-c", "core.protectNTFS=true"] : []),
+    ...args,
   ], {
     cwd,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },

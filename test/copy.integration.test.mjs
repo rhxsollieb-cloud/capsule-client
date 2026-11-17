@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ApiClient } from "../src/api/client.mjs";
+import { adminOperation } from "../src/operations/admin.mjs";
+import { performAction } from "../src/ui/actions.mjs";
+import { parseArguments } from "../src/commands/arguments.mjs";
+import { dispatch } from "../src/commands/dispatch.mjs";
+import { missingServer, serverFixture } from "./serverFixture.mjs";
+
+test("普通员工CLI复制只读源，目标独立可编辑且源旧token冲突不产生副本", { skip: missingServer, timeout: 90000 }, async (t) => {
+  const { application, clientHome } = await serverFixture(t);
+  const admin = new ApiClient({ serverUrl: application.url, token: "integration-only-token", home: clientHome });
+  await adminOperation(admin, "user-create", { name: "普通员工", role: "editor", username: "copy.employee", password: "copy-test-password-2026!" });
+  const login = await admin.json("/api/access/login", "POST", { username: "copy.employee", password: "copy-test-password-2026!" });
+  const employee = new ApiClient({ serverUrl: application.url, token: login.token, home: clientHome });
+  const source = await admin.json("/api/capsules", "POST", { name: "只读原文.md", kind: "markdown", body: "# 原文\n\n保留完整正文。\n" });
+  const access = await adminOperation(admin, "cap-access", { name: source.name });
+  await adminOperation(admin, "cap-access", { name: source.name, revision: access.revision, permission: "read" });
+  const copy = await dispatch(parseArguments(["copy", source.name, "员工副本.md", "--token", source.token]), employee);
+  assert.equal(copy.permissions.edit, true);
+  assert.equal((await adminOperation(admin, "cap-access", { name: copy.name })).permission, "edit");
+  assert.equal((await employee.json(employee.path(copy.name, "read", { entry: "README.md" }))).body, "# 原文\n\n保留完整正文。\n");
+  assert.equal((await admin.json(admin.path(source.name))).commit, source.commit);
+  assert.equal((await admin.json(admin.path(source.name, "lease"))).leases.length, 0);
+  assert.equal((await admin.json(admin.query("/api/mounts", { path: "/", limit: 100 }))).items.length, 0);
+  const saved = await performAction(employee, { action: "save", name: copy.name, entry: "README.md", body: "# 员工副本修改\n", token: copy.token });
+  assert.notEqual(saved.commit, copy.commit);
+  assert.equal((await admin.json(admin.path(source.name, "read", { entry: "README.md" }))).body, "# 原文\n\n保留完整正文。\n");
+  await admin.putText(source.name, "README.md", "# 新原文\n", source.token);
+  await assert.rejects(dispatch(parseArguments(["copy", source.name, "旧基线副本.md", "--token", source.token]), employee), (error) => error.status === 409);
+  await assert.rejects(admin.json(admin.path("旧基线副本.md")), (error) => error.status === 404);
+});

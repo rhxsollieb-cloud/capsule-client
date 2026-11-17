@@ -9,6 +9,10 @@
 
 web/维护浏览器呈现和草稿，src/ui/提供本地静态资源与同源桥接。桥接复用ApiClient和现有同步/运行模块，服务端认证值保留在本地进程。浏览器预览与流媒体经统一HTTP内容接口取用，不等于Git同步，也不自动写入同步缓存。图形接口见[ui.md](ui.md)。
 
+src/connection/store.mjs维护当前用户私有的connection.sqlite，保存连接及有到期的登录会话令牌，不保存密码。src/operations/auth.mjs维护统一Authentication，src/commands/auth.mjs与src/ui/auth.mjs复用其连接、登录、退出、改密及状态；src/connection/local-auth.mjs先核对本机桥接的配置身份，发送POST后不因未知结果转为独立重放。人和Agent统一用用户名密码登录，前端与CLI默认共享同一配置的12小时会话和权限。显式CAPSULE_TOKEN优先级仅为旧脚本兼容保留，图形工作台忽略该长期令牌。配置位置和生命周期见[登录说明](login.md)。
+
+web/connection.mjs负责按需登录弹窗，web/identity-transition.mjs核对草稿与稳定用户ID。会话过期后的同一用户重登保留草稿，其他身份或连接变更在有草稿时拒绝；外部CLI切换后隐藏旧内容，要求登录原账户处理。BFF身份变化停止原Skill管理器并轮换本机会话，防止旧页面继续使用原身份。浏览器不接收服务端Bearer，密码不写localStorage或cap。
+
 src/commands/catalog/按能力维护唯一命令声明，参数解析、分层帮助和分派由同一目录派生。CLI负责输入与输出，src/operations/维护CLI与本地图形桥接共用的发现、位置组织、活动查询和文字替换操作；权威版本校验和事务仍由服务端完成。help及guide在连接配置解析前执行；guide只读随包文档，其他实际查询与本机Skill通道的区别见[CLI说明](cli-parity.md)。
 
 web/shell.mjs负责按需工具与导航折叠，document-header.mjs管理内容标题、保存状态、活动提示和菜单，tree-actions.mjs提供节点菜单，library-management.mjs编排断链/清除预览及确认。inspector.mjs维护独立属性弹窗、版本与说明草稿，inspector-details.mjs负责分页正文和按需媒体浏览；属性查看不切换中央编辑器，文字只引用已有正文。web/activity.mjs维护可过期的编辑心跳及活动呈现，不替代token或事件回执。Workspace在确认清除且没有同名重建后失效对应请求与视图；删除与回撤分别处理终态。交互规则由[ui.md](ui.md)维护。
@@ -25,7 +29,7 @@ src/database/从SQLite自身读取表结构，适配带主键的业务行操作�
 
 src/cache/content.mjs和content-store.mjs维护独立的轻量原件缓存，服务Office解析与本机媒体桥接；不为单文件读取下载整个Git历史。每次用当前凭据条件重验ETag，权限不缓存，登记和LRU位于client.sqlite，字节仅放content-cache/。web/polling.mjs管理纯查询可见性，web/api.mjs只合并进行中的只读请求。具体容量、回收及查询频率唯一维护于[原件缓存与流量](content-cache.md)。
 
-src/operations/admin.mjs维护员工、授权、审计和备份协议，CLI的admin能力组与src/ui/actions.mjs共用，不建立独立权限实现。web/admin.mjs负责弹窗生命周期，admin-users/admin-backups/admin-common各自负责管理面板；web/permissions.mjs从me及cap权限投影控制交互。新个人凭据只在签发时展示；本地原件、缓存和运行记录仍由既有模块管理，账户/授权/审计与备份登记均在服务端顶层SQLite。详见[员工身份](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
+src/operations/admin.mjs维护员工登录设置、兼容凭据、cap非管理员三档权限、审计和备份协议，CLI的admin能力组与src/ui/actions.mjs共用，不建立独立权限实现。web/admin.mjs负责弹窗生命周期，admin-users/admin-backups/admin-common各自负责面板；web/permissions.mjs从me及cap权限投影控制交互。账户分admin/editor；cap统一非管理员read/edit/none，新cap默认edit，不逐员工授权，最终始终由服务端判断。兼容长期凭据只在签发时展示；本地原件、缓存和运行记录仍由既有模块管理，账户、密码哈希、会话、保护、审计与备份登记均在服务端顶层SQLite。详见[员工身份](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
 
 同步在持锁后取得提交及元数据，校验本地对象，必要时下载bundle，核对checkout后发布缓存记录。单文件仓库树只有该文件，目录仓库树就是原生内容；客户端缓存不按虚拟路径搬动。
 
@@ -50,6 +54,8 @@ src/cache/snapshot.mjs在同一缓存锁下核对路径、干净工作树、所�
 | runs/运行ID/work | 单次run的独立工作副本；临时snapshot在准备/执行结束后移除 |
 
 这些本地副本承担不同生命周期，不等于重复网络下载；不把它们合并为同一可写目录或自动按文件相同清除。实际根目录用paths查询，运行和Skill具体路径以回执为准。
+
+Windows 默认 home 位于当前用户 LOCALAPPDATA/Capsule，缺少该变量时按用户主目录的 AppData/Local/Capsule 定位；macOS/Linux 仍用安装目录 .local。显式 CAPSULE_CLIENT_HOME 优先，相对值按启动目录解析，不自动迁移原目录。本机缓存需要支持硬链接的本地文件系统，Windows 使用 NTFS；连接文件和缓存通过当前用户的 NTFS ACL 保护。Windows checkout 前校验原生条目名称及大小写冲突，失败保留远端内容，不通过隐式改名完成同步。安装、路径与运行边界见[Windows 使用说明](windows.md)。
 
 client.sqlite的首次schema检测与建表在BEGIN IMMEDIATE内复查版本，允许多个CLI首次共同初始化；已有v3记录保持原状，未知格式不覆盖。元数据发布及当前缓存头在同一SQLite事务中更新。
 

@@ -11,6 +11,10 @@ import { sendMedia, uploadMedia } from "./media.mjs";
 import { officeContentPolicy, sendOfficeRecovery } from "./office.mjs";
 import { SkillManager } from "../skills/manager.mjs";
 import { sendBackupContent } from "./admin.mjs";
+import { Authentication } from "../operations/auth.mjs";
+import { authRoute } from "./auth.mjs";
+import { setTimeout as delay } from "node:timers/promises";
+import { skillActor } from "./skill-delegation.mjs";
 
 export function createUiApplication({
   config,
@@ -20,24 +24,62 @@ export function createUiApplication({
   maxUploadBytes = 8 * 1024 * 1024 * 1024,
   api = new ApiClient(config),
   skills = new SkillManager(api),
+  authentication = new Authentication({ env: { CAPSULE_CONFIG_HOME: config?.connectionHome || config?.home }, config, fetcher: api.fetcher }),
 } = {}) {
   assertLoopback(host);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw uiError("界面端口无效");
   if (!config?.serverUrl || !config?.home) throw uiError("客户端配置缺失");
   if (!Number.isSafeInteger(maxUploadBytes) || maxUploadBytes < 1)
     throw uiError("上传上限无效");
-  const csrfToken = randomBytes(32).toString("hex");
-  const contentPolicy = officeContentPolicy(config);
+  let csrfToken = randomBytes(32).toString("hex");
+  let contentPolicy = officeContentPolicy(config);
+  let changingIdentity = false;
+  let activeRequests = 0;
+  const beforeChange = async () => {
+    const deadline = Date.now() + 2000;
+    while (activeRequests && Date.now() < deadline) await delay(20);
+    if (activeRequests) throw uiError("当前还有正在处理的操作，请等待完成后再切换身份", 409);
+    await skills.close();
+  };
+  const changed = () => {
+    config = authentication.config;
+    api = authentication.api();
+    skills = new SkillManager(api);
+    contentPolicy = officeContentPolicy(config);
+    csrfToken = randomBytes(32).toString("hex");
+  };
   const server = createServer(async (request, response) => {
+    let counted = false;
+    const requestApi = api;
     try {
       const base = checkRequest(request, server.address().port);
       const url = new URL(request.url, base);
       if (url.pathname === "/ui/session" && request.method === "GET")
-        return json(response, 200, { csrfToken, serverUrl: config.serverUrl, officeEditorUrl: config.officeEditorUrl || "http://127.0.0.1:8081" });
+        return json(response, 200, { csrfToken, connectionKey: authentication.store.key, serverUrl: config.serverUrl, officeEditorUrl: config.officeEditorUrl || "http://127.0.0.1:8081" });
+      if (url.pathname.startsWith("/ui/auth/")) {
+        if (changingIdentity) throw uiError("本机正在切换连接或身份，请稍后重试", 409);
+        if (request.method === "POST") checkSession(request, csrfToken);
+        changingIdentity = request.method === "POST";
+        try { return await authRoute(request, response, url, { authentication, beforeChange, changed }); }
+        catch (error) {
+          if (error.identityChanged) changed();
+          else if (skills.closed) skills = new SkillManager(api);
+          throw error;
+        }
+        finally { changingIdentity = false; }
+      }
+      if (changingIdentity && url.pathname.startsWith("/ui/")) throw uiError("本机正在切换连接或身份，请稍后重试", 409);
+      if (["/ui/content", "/ui/office/recovery", "/ui/admin/backup-content"].includes(url.pathname)) {
+        checkSession({ headers: { "x-capsule-session": request.headers["x-capsule-session"] || url.searchParams.get("session") } }, csrfToken);
+        url.searchParams.delete("session");
+      }
+      if (url.pathname.startsWith("/ui/")) { activeRequests++; counted = true; }
       if (url.pathname === "/ui/action") {
         if (request.method !== "POST") throw uiError("该接口需要POST", 405);
         checkSession(request, csrfToken);
-        return json(response, 200, await performAction(api, await requestJson(request), { skills, lease: request.headers["x-capsule-lease"] }));
+        const input = await requestJson(request);
+        const actor = skillActor(request, input, { api, skills, connectionKey: authentication.store.key });
+        return json(response, 200, await performAction(actor.api, input, { skills: actor.skills, lease: request.headers["x-capsule-lease"] }));
       }
       if (url.pathname === "/ui/upload") {
         if (request.method !== "PUT") throw uiError("该接口需要PUT", 405);
@@ -64,11 +106,14 @@ export function createUiApplication({
         response.destroy(error);
         return;
       }
-      json(response, error.status || 500, errorResult(error, api));
+      json(response, error.status || 500, errorResult(error, requestApi));
+    } finally {
+      if (counted) activeRequests--;
     }
   });
   return {
     server,
+    authentication,
     get url() {
       const address = server.address();
       return address && typeof address !== "string"

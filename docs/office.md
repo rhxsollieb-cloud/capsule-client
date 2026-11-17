@@ -10,6 +10,8 @@
 CAPSULE_ONLYOFFICE_URL=http://127.0.0.1:8081 npm run ui
 ```
 
+Windows PowerShell 使用 `$env:CAPSULE_ONLYOFFICE_URL = 'http://127.0.0.1:8081'` 后执行 `npm.cmd run ui`；连接公司远端时优先使用与 CLI 共用的 --env-file，见[Windows 使用说明](windows.md)和[腾讯云连接](tencent-connection.md)。
+
 默认值为http://127.0.0.1:8081。该值需要与服务端返回的editorUrl一致。Office脚本、连接及编辑器iframe限于该固定来源；iframe另允许127.0.0.1和localhost的HTTP回环端口，以承载本机Skill协作页面。工作台自身脚本不启用inline/eval。文档服务未配置或未就绪时，界面显示实际故障、重试及原件下载入口。
 
 普通服务端Bearer和ONLYOFFICE JWT密钥保留在本地进程；浏览器只获得本次编辑器配置及短期原件票据。具体服务端环境与接口维护于[服务端API契约](../../capsule-server/docs/api.md)。

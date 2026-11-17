@@ -87,7 +87,7 @@ test("ONLYOFFICE共享入口保存原件、保留key、版本冲突恢复与cap�
   assert.equal(conflict.status, "conflict");
   assert.equal(conflict.recoveryAvailable, true);
   assert.equal((await cli("stat", created.name)).commit, external.commit);
-  const recovered = await fetch(ui.url + "/ui/office/recovery?" + new URLSearchParams({ id: opened.id }));
+  const recovered = await fetch(ui.url + "/ui/office/recovery?" + new URLSearchParams({ id: opened.id, session: session.csrfToken }));
   assert.equal(recovered.status, 200);
   assert.deepEqual(Buffer.from(await recovered.arrayBuffer()), unsaved);
 

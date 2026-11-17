@@ -4,10 +4,12 @@ import { dispatch } from "../src/cli.mjs";
 import { parseArguments } from "../src/commands/arguments.mjs";
 import { performAction } from "../src/ui/actions.mjs";
 import { ApiClient } from "../src/api/client.mjs";
+import { ConnectionStore } from "../src/connection/store.mjs";
 
-test("skill本机操作只调用注入manager，不转发到远端cap接口", async () => {
+test("skill本机操作先校验身份及cap，再调用注入manager管理本机状态", async () => {
   const calls = [];
-  const api = { json() { throw new Error("本机操作不得发到远端"); } };
+  const checks = [];
+  const api = { path: (name) => "/cap/" + name, async json(path) { checks.push(path); return {}; } };
   const skills = Object.fromEntries(["register", "status", "start", "stop"].map((method) => [method, async (name) => {
     calls.push([method, name]);
     return { name, method };
@@ -16,18 +18,22 @@ test("skill本机操作只调用注入manager，不转发到远端cap接口", as
     assert.deepEqual(await performAction(api, { action: `skill-${method}`, name: "中文工具" }, { skills }), { name: "中文工具", method });
   }
   assert.deepEqual(calls, [["register", "中文工具"], ["status", "中文工具"], ["start", "中文工具"], ["stop", "中文工具"]]);
+  assert.deepEqual(checks, Array.from({ length: 4 }, () => ["/api/access/me", "/cap/中文工具"]).flat());
   await assert.rejects(performAction(api, { action: "skill-start", name: "工具" }), (error) => error.status === 503);
   await assert.rejects(performAction(api, { action: "skill-start", name: "工具", command: "/bin/sh" }, { skills }), (error) => error.status === 400);
   await assert.rejects(performAction(api, { action: "skill-status", name: "../工具" }, { skills }), (error) => error.status === 400);
 });
 
-test("管理CLI通过本机session及action通道复用状态且不发送服务端凭据", async (t) => {
+test("管理CLI通过同服务器及profile的本机通道以调用方会话复用状态", async (t) => {
   const calls = [];
+  const connectionKey = new ConnectionStore({}).key;
   t.mock.method(globalThis, "fetch", async (url, options = {}) => {
     calls.push({ url: new URL(url), options });
-    if (new URL(url).pathname === "/ui/session") return Response.json({ csrfToken: "host-session" });
+    if (new URL(url).pathname === "/ui/session") return Response.json({ csrfToken: "host-session", serverUrl: "https://server.invalid", connectionKey });
     const headers = new Headers(options.headers);
-    assert.equal(headers.get("Authorization"), null);
+    assert.equal(headers.get("Authorization"), "Bearer private-server-token");
+    assert.equal(headers.get("X-Capsule-Server"), "https://server.invalid");
+    assert.equal(headers.get("X-Capsule-Connection"), connectionKey);
     assert.equal(headers.get("X-Capsule-Session"), "host-session");
     assert.equal(headers.get("Origin"), "http://127.0.0.1:6000");
     return Response.json({ name: "工具", state: "registered" });
@@ -37,7 +43,7 @@ test("管理CLI通过本机session及action通道复用状态且不发送服务�
   assert.equal(result.state, "registered");
   assert.deepEqual(calls.map((call) => call.url.origin), ["http://127.0.0.1:6000", "http://127.0.0.1:6000"]);
   assert.deepEqual(JSON.parse(calls[1].options.body), { action: "skill-register", name: "工具" });
-  assert.equal(JSON.stringify(calls).includes("private-server-token"), false);
+  assert.equal(calls.some((call) => call.url.href.includes("private-server-token") || call.options.body?.includes("private-server-token")), false);
 });
 
 test("通用运行入口有明确退役诊断，旧参数仅接受skill固定值", () => {
@@ -49,10 +55,11 @@ test("通用运行入口有明确退役诊断，旧参数仅接受skill固定值
 });
 
 test("本机管理通道保留桥接返回的未知结果与事件回执", async (t) => {
+  const connectionKey = new ConnectionStore({}).key;
   t.mock.method(globalThis, "fetch", async (url) => new URL(url).pathname === "/ui/session"
-    ? Response.json({ csrfToken: "host-session" })
+    ? Response.json({ csrfToken: "host-session", serverUrl: "https://server.invalid", connectionKey })
     : Response.json({ error: "响应未确认", code: "RESULT_UNKNOWN", uncertain: true, eventId: "event-1", result: { name: "工具" } }, { status: 502 }));
-  const api = { config: { clientUrl: "http://127.0.0.1:6000" } };
+  const api = { config: { clientUrl: "http://127.0.0.1:6000", serverUrl: "https://server.invalid", token: "caller-session" } };
   await assert.rejects(dispatch(parseArguments(["skill-start", "工具"]), api), (error) => {
     assert.equal(error.status, 502);
     assert.equal(error.code, "RESULT_UNKNOWN");
@@ -61,6 +68,22 @@ test("本机管理通道保留桥接返回的未知结果与事件回执", async
     assert.deepEqual(error.result, { name: "工具" });
     return true;
   });
+});
+
+test("Skill CLI发现服务器或配置目录不匹配时不会发出委派请求", async (t) => {
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => { requests++; return Response.json({ csrfToken: "host", serverUrl: "https://other.invalid", connectionKey: "other" }); });
+  const api = { config: { clientUrl: "http://127.0.0.1:6000", serverUrl: "https://server.invalid", token: "independent-agent" } };
+  await assert.rejects(dispatch(parseArguments(["skill-start", "工具"]), api), { code: "LOCAL_CLIENT_MISMATCH" });
+  assert.equal(requests, 1);
+});
+
+test("未登录 CLI 不会借用已打开的工作台身份", async (t) => {
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => { requests++; throw new Error("cannot request host"); });
+  const api = { config: { clientUrl: "http://127.0.0.1:6000", serverUrl: "https://server.invalid", token: "" } };
+  await assert.rejects(dispatch(parseArguments(["skill-start", "工具"]), api), { status: 401, code: "LOCAL_LOGIN_REQUIRED" });
+  assert.equal(requests, 0);
 });
 
 test("显式转换使用统一skill接口和原token，不把非法runtime静默当skill", async () => {

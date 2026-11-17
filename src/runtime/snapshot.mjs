@@ -1,7 +1,7 @@
 import { cp, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../system/process.mjs";
-import { prepareWorkingCopy } from "../system/gitWorkingCopy.mjs";
+import { prepareWorkingCopy, validateCheckoutTree } from "../system/gitWorkingCopy.mjs";
 import { snapshotCachedVersion } from "../cache/snapshot.mjs";
 import { loadSkill, CLI_ENTRY } from "../skills/format.mjs";
 
@@ -22,6 +22,7 @@ export async function prepareRun(config, synced, directory) {
   if (version.runtime?.engine !== "node" || version.runtime.entry !== CLI_ENTRY)
     throw new Error("代码cap仅支持skill固定入口node/scripts/cli.mjs，请将旧运行入口整理为skill格式");
   await prepareWorkingCopy(snapshot);
+  await validateCheckoutTree(snapshot, synced.commit);
   await git(["checkout", "--detach", synced.commit], snapshot);
   if (await git(["rev-parse", "HEAD"], snapshot) !== version.commit)
     throw new Error("运行快照与缓存元数据提交不一致");

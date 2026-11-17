@@ -23,8 +23,8 @@ export function leaseMessage(state) {
 
 // The transport owns one server lease. Expired or uncertain renewals never reacquire automatically.
 export class EditLeaseSession {
-  constructor({ request = action, onChange = () => {}, createId = () => crypto.randomUUID(), schedule = setTimeout,
-    cancel = clearTimeout, now = Date.now, heartbeatMs = 5000, timeoutMs = 8000 } = {}) {
+  constructor({ request = action, onChange = () => {}, createId = () => crypto.randomUUID(), schedule = (...args) => globalThis.setTimeout(...args),
+    cancel = (timer) => globalThis.clearTimeout(timer), now = Date.now, heartbeatMs = 5000, timeoutMs = 8000 } = {}) {
     Object.assign(this, { request, onChange, createId, schedule, cancel, now, heartbeatMs, timeoutMs });
     this.state = { status: "idle" };
     this.onPageHide = () => this.release();

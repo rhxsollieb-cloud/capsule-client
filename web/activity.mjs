@@ -28,7 +28,7 @@ function activityRecord(value, name) {
 
 // Each panel owns its sessions; a late release must never remove a later selection's presence.
 export class ActivitySession {
-  constructor({ onChange = () => {}, request = action, schedule = setTimeout, cancel = clearTimeout,
+  constructor({ onChange = () => {}, request = action, schedule = (...args) => globalThis.setTimeout(...args), cancel = (timer) => globalThis.clearTimeout(timer),
     now = Date.now, createId = () => crypto.randomUUID(), ownerId = tabClientId(), heartbeatMs = 10000, dirtyDelayMs = 500, requestTimeoutMs = 8000,
     document: page = globalThis.document } = {}) {
     Object.assign(this, { onChange, request, schedule, cancel, now, createId, ownerId, heartbeatMs, dirtyDelayMs, requestTimeoutMs, page });

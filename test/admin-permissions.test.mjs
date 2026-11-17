@@ -8,9 +8,9 @@ import { TreeActions } from "../web/tree-actions.mjs";
 import { SkillView } from "../web/skill.mjs";
 import { Workspace } from "../web/workspace.mjs";
 
-test("个人身份与cap响应权限控制只读账户、未知身份及不同cap", (t) => {
+test("身份只读标记、未知身份及cap响应权限共同控制写入", (t) => {
   t.after(() => setIdentity(undefined));
-  setIdentity({ principal: { role: "viewer" }, permissions: { readOnly: true, create: false, manage: false } });
+  setIdentity({ principal: { role: "editor" }, permissions: { readOnly: true, create: false, manage: false } });
   assert.equal(canEdit({ permissions: { edit: true } }), false);
   assert.equal(canCreate(), false);
   assert.equal(canManage(), false);
@@ -25,7 +25,7 @@ test("个人身份与cap响应权限控制只读账户、未知身份及不同ca
 
 test("只读内容各写入口拒绝发送保存，保留原草稿并禁用节点删除/断链", async (t) => {
   t.after(() => setIdentity(undefined));
-  setIdentity({ principal: { role: "viewer" }, permissions: { readOnly: true, create: false } });
+  setIdentity({ principal: { role: "editor" }, permissions: { readOnly: false, create: true } });
   let calls = 0;
   t.mock.method(globalThis, "fetch", () => { calls++; throw new Error("只读不应发送保存"); });
   const cap = { name: "只读内容", kind: "text", permissions: { read: true, edit: false } };
@@ -46,6 +46,7 @@ test("只读内容各写入口拒绝发送保存，保留原草稿并禁用节�
   const items = TreeActions.prototype.items.call({ current: { ...cap, path: "/只读内容" } });
   assert.equal(items.find((item) => item.label?.startsWith("清除")).disabled, true);
   assert.equal(items.find((item) => item.label?.startsWith("断开")).disabled, true);
+  assert.equal(items.find((item) => item.label?.startsWith("复制")).disabled, false);
   assert.equal(calls, 0);
   assert.equal(draft.dirty, true);
   assert.equal(draft.baseToken, "original");

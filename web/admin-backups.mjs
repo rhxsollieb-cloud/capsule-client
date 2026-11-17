@@ -1,4 +1,4 @@
-import { action } from "./api.mjs";
+import { action, sessionUrl } from "./api.mjs";
 import { button, node, replace } from "./dom.mjs";
 import { details, form, input, pagination, rows, section } from "./admin-common.mjs";
 
@@ -39,7 +39,7 @@ export async function backupsPage(context, offset = 0) {
   });
   replace(context.body, section("完整备份", node("p", "property-note", "备份包含知识库原件、元数据与版本，可能含敏感数据；下载后请按公司要求保存。恢复后的隔离库需经核验后由维护者安排切换。"), create, offline,
     rows(result.items, [["id", "备份ID"], ["label", "说明"], ["status", "状态"], ["createdAt", "创建时间"]], (item) => {
-      const download = node("a", "button secondary", "下载"); download.href = "/ui/admin/backup-content?id=" + encodeURIComponent(item.id); download.download = "";
+      const download = node("a", "button secondary", "下载"); download.href = sessionUrl("/ui/admin/backup-content", { id: item.id }); download.download = "";
       return [button("详情", () => context.perform("backup-inspect", { id: item.id }, show)), button("校验", () => context.perform("backup-verify", { id: item.id }, show)), download, button("隔离恢复…", () => restore(item))];
     }), pagination(result, offset, (next) => context.load("backups", next))), section("核对未知结果", receipt), output);
 }

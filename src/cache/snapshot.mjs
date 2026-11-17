@@ -1,9 +1,10 @@
-import { lstat, realpath } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../system/process.mjs";
 import { cacheDirectory } from "./sync.mjs";
 import { withCacheLock } from "./lock.mjs";
 import { cachedVersion } from "./metadata.mjs";
+import { assertWorkingTree } from "../system/gitWorkingCopy.mjs";
 
 export async function snapshotCachedVersion(config, synced, destination) {
   const directory = cacheDirectory(config, synced.name);
@@ -16,8 +17,7 @@ export async function snapshotCachedVersion(config, synced, destination) {
       const info = await lstat(path);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("缓存仓库位置被替换，请核对后重新同步");
     }
-    if (await git(["rev-parse", "--show-toplevel"], repository) !== await realpath(repository))
-      throw new Error("缓存工作树指向其他目录，已停止创建运行快照");
+    await assertWorkingTree(repository, "缓存工作树指向其他目录，已停止创建运行快照");
     if (await git(["status", "--porcelain", "--untracked-files=all", "--ignored"], repository))
       throw new Error("本地胶囊缓存含未提交改动，请先保留改动后再运行");
     if (await git(["rev-parse", "--verify", synced.commit + "^{commit}"], repository) !== synced.commit)

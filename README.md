@@ -6,32 +6,41 @@
 - 环境：Node.js 24或以上，Git。
 - 服务端项目位于同级的`capsule-server/`。
 
+Windows 使用 Node.js 24 与 Git for Windows，在 PowerShell 中运行同一客户端；安装、路径及启动方式见[Windows 使用说明](docs/windows.md)。无需 WSL 或本机 Docker，连接远程 ONLYOFFICE 后可在浏览器编辑 Office。
+
 ## 安装与连接
 
+公司同事按[接入与安装说明](docs/team-onboarding.md)使用 GitHub CLI 获取指定分支，或解压管理员提供的精确版本 ZIP。Windows、认领花名和界面登录均有对应步骤；密码随独立员工接入文档交付，不进入源码包。
+
 ```sh
-npm install
-npm start -- help
+npm ci
+npm run ui
 ```
 
-默认连接`http://127.0.0.1:5184`，先在服务端项目运行`npm start`。需要短命令时可在本项目执行`npm link`，随后使用`capsule`。
+打开终端输出的本机地址，在“连接与登录”中填写知识库服务器、Office 服务地址及管理员分配的用户名密码。员工不需要编辑环境文件；客户端保存连接和12小时有效的登录会话，不保存密码。人和Agent通过前端或CLI使用同一账户登录，默认共用本机配置和权限，先用`node src/cli.mjs me`核对身份。连接、登录与切换见[登录说明](docs/login.md)。
+
+本地开发默认服务端为`http://127.0.0.1:5184`，此时才需要在服务端项目运行`npm start`。连接公司远程服务无需本机服务端。需要短命令时可在本项目执行`npm link`，随后使用`capsule`。
+
+以下环境配置供旧脚本兼容、维护或隔离开发使用；人和Agent的日常连接均通过界面或CLI connection/login完成。
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | CAPSULE_SERVER_URL | http://127.0.0.1:5184 | 服务端地址 |
-| CAPSULE_TOKEN | 空 | 当前员工的个人凭据；维护者也可使用服务端部署管理员凭据 |
+| CAPSULE_TOKEN | 空 | 兼容旧脚本的长期凭据，显式设置时优先于CLI登录会话；图形登录不使用此值，部署管理员凭据仅维护者保管 |
 | CAPSULE_LEASE_TOKEN | 空 | Agent当前任务的编辑租约凭证，仅随受保护写入发送，不传给Skill运行环境 |
-| CAPSULE_CLIENT_HOME | 安装目录/.local | 本地缓存、工作目录和运行记录 |
+| CAPSULE_CLIENT_HOME | Windows：%LOCALAPPDATA%\Capsule；其他系统：安装目录/.local | 本地缓存、工作目录和运行记录 |
+| CAPSULE_CONFIG_HOME | 当前用户配置目录 | 保存connection.sqlite；未设置时显式CAPSULE_CLIENT_HOME也隔离连接资料，具体路径见登录说明 |
 | CAPSULE_UI_PORT | 5183 | 本地图形服务监听端口，也是默认客户端通道的端口 |
 | CAPSULE_CLIENT_URL | http://127.0.0.1:5183，跟随CAPSULE_UI_PORT | skill-*命令连接的本机HTTP根地址；不改变图形服务监听端口 |
 | CAPSULE_ONLYOFFICE_URL | http://127.0.0.1:8081 | 浏览器可访问的ONLYOFFICE Docs根地址，与服务端配置保持一致 |
 
-配置按环境变量传入。默认工作区随客户端安装位置定位；显式设置相对的CAPSULE_CLIENT_HOME时按启动目录解析，跨入口使用同一工作区应配置绝对路径。上传限额等图形服务配置见[界面说明](docs/ui.md)。
+本机连接由ConnectionStore管理，前端和Agent CLI默认共用登录会话。CLI显式环境值为兼容旧脚本保留优先级，图形工作台忽略环境中的长期令牌。Windows 默认缓存位于当前用户本地应用目录，其他系统仍随客户端安装位置定位；显式相对CAPSULE_CLIENT_HOME按启动目录解析，跨入口使用同一工作区应配置绝对路径。上传限额等图形服务配置见[界面说明](docs/ui.md)。
 
-连接腾讯云时使用独立的本机5185工作台及受保护连接文件，API与Office通过HTTPS访问远端；配置和启动命令见[腾讯云连接](docs/tencent-connection.md)。
+连接腾讯云时，API与Office分别使用HTTPS的12090与12091端口，根IP入口保留给ERP；地址和启动方式见[腾讯云连接](docs/tencent-connection.md)。
 
 ## 图形工作台
 
-先在服务端项目运行npm start，再在客户端项目启动界面。
+在客户端项目启动界面，首次使用即显示连接与登录入口。
 
 ```sh
 npm run ui
@@ -39,7 +48,7 @@ npm run ui
 
 界面地址默认为`http://127.0.0.1:5183`，CAPSULE_UI_PORT可修改端口。界面通过本地回环服务调用现有客户端模块，服务端认证值保存在本地进程；浏览器使用本机会话校验和同源检查。
 
-已生成本机ONLYOFFICE连接配置时，先执行npm run build:web，再用`node --env-file=.local/ui.env src/ui/main.mjs`启动；CLI同样可用`node --env-file=.local/ui.env src/cli.mjs ...`读取本机认证配置。首次部署按[服务端部署说明](../capsule-server/docs/onlyoffice-deployment.md)执行runtime与connect脚本，密钥不需写入源码或命令参数。
+ONLYOFFICE浏览器地址可在连接页的Office连接设置中修改。服务端维护者首次部署按[服务端部署说明](../capsule-server/docs/onlyoffice-deployment.md)执行，不向员工分发部署环境文件或JWT密钥。旧环境文件仅保留旧脚本或维护用途，普通工作台与Agent使用用户名密码登录会话。
 
 工作台沿用VideoSeed的硬塑料视觉风格，支持亮色和深色主题。知识库与目录内容使用双列导航，中央按类型阅读和编辑，属性按需弹出；内容标题承载保存、文件菜单及活动提示。布局、草稿、并发会话、断链和清除规则见[界面说明](docs/ui.md)。
 
@@ -49,31 +58,31 @@ Markdown目录管理正文与自有附件；Office使用自托管ONLYOFFICE Docs
 
 ## 员工与管理入口
 
-在知识库cube菜单打开“账户与管理”，查看当前身份；管理员可管理员工、签发或撤销个人凭据、设置当前cap授权、查询审计，以及创建、校验、下载和隔离恢复整库备份。界面和CLI复用src/operations/admin.mjs及服务端统一API，管理资料放服务端顶层SQLite，不写入cap。
+在知识库cube菜单打开“连接与登录”或“账户与管理”。管理员可创建员工、修改登录名和显示名称、重设密码、管理会话及兼容凭据、统一设置cap的非管理员访问档位、查询审计，以及创建、校验、下载和隔离恢复整库备份。界面和CLI复用src/operations/admin.mjs及服务端统一API，管理资料放服务端顶层SQLite，不写入cap。
 
 ```sh
 node src/cli.mjs me
 node src/cli.mjs help admin --json
 node src/cli.mjs users
-node src/cli.mjs grants 公司手册.md
+node src/cli.mjs cap-access 公司手册.md
 node src/cli.mjs audit --name 公司手册.md --limit 30
 node src/cli.mjs backup-create --label 上线前备份
 node src/cli.mjs backups
 ```
 
-员工分别使用自己的CAPSULE_TOKEN，CLI与图形进程使用同一环境配置。令牌原文仅在签发时返回一次，界面不存入浏览器；管理员部署凭据不分发给普通员工。角色和cap授权共同控制访问，多处挂载不扩大权限，修改登记使用对应revision，正文仍使用原token。
+人和Agent使用同一套用户名密码登录，CLI与工作台默认共用本机保存的12小时会话和账户权限。账户分管理员和普通员工（editor）；管理员为每个cap设置全体非管理员统一的读写、只读或无访问，新cap默认读写，不再逐员工授权。只读允许下载、复制为新cap后编辑。权限设置携revision，正文仍使用原token，多处挂载不扩大权限。详见[登录与身份](docs/login.md)。
 
-backup-restore必须先预演并核对确认字段，仅在服务端受控恢复区新建隔离库；结果未知用原restoreId查询。恢复库旧个人凭据会撤销、旧Office会话过期，不自动切换活动服务。原目录库丢失时可用backup-register按外存SHA-256认领备份目录后恢复。
+backup-restore必须先预演并核对确认字段，仅在服务端受控恢复区新建隔离库；结果未知用原restoreId查询。恢复库旧登录会话及兼容长期凭据会撤销，密码需要重新设置，旧Office会话过期，不自动切换活动服务。原目录库丢失时可用backup-register按外存SHA-256认领备份目录后恢复。
 
-初始化、权限和一次性凭据用法见[员工身份与审计](../capsule-server/docs/access.md)，备份覆盖、维护窗口及灾难恢复见[整库备份恢复](../capsule-server/docs/backups.md)。当前是个人令牌认证，企业SSO和网页登录尚未实现。
+初始化、权限和兼容凭据用法见[员工身份与审计](../capsule-server/docs/access.md)，备份覆盖、维护窗口及灾难恢复见[整库备份恢复](../capsule-server/docs/backups.md)。企业SSO、MFA和邮件密码找回尚未实现。
 
 此管理入口需要配套更新并重启服务端与本机客户端桥接进程；先保存正在编辑的内容。单独刷新网页不会加载Node进程的新接口，me不可用时界面禁用写入并提示核对版本，不退回匿名管理员。
 
 ## Agent入口
 
-Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装短命令后可使用capsule。先查范围，再展开正文；内容修改携当前token，运行代码使用run，回撤使用revert及event查询。名称、虚拟路径和原生entry的区别见[数据规范](docs/data-format.md)。
+Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装短命令后可使用capsule。先执行login或使用同一配置已有会话，非交互用--password-file文件或-读取密码，不传明文密码argv。会话和前端一样12小时到期，先用me核对身份，再查范围、展开正文；内容修改携当前token，运行代码使用run，回撤使用revert及event查询。名称、虚拟路径和原生entry的区别见[数据规范](docs/data-format.md)。
 
-帮助按capsules/content/database/mounts/versions/office/skills/system/admin/leases分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
+帮助按auth/capsules/content/database/mounts/versions/office/skills/system/admin/leases分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
 
 第一次接触胶囊时，先用`guide`列出说明主题，再用`guide data`了解数据模型、`guide skills`了解胶囊Skill与常规Skill的区别。指南直接按行读取本包维护的[数据规范](docs/data-format.md)和[Skill说明](docs/skills.md)，不联网、不解析连接配置、不初始化工作区。续读使用返回的lines.nextLine，也可用--raw取得所选说明正文；它解释本客户端约定，不代表远端实时协商或某个Skill当前状态。
 
@@ -176,12 +185,14 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 集成测试默认查找同级`capsule-server/`，也可通过`CAPSULE_SERVER_ROOT`指定。缺少服务端源码时该项明确跳过，其余客户端测试仍可执行。
 
+前端交互使用独立的 Playwright Chromium 测试集：首次执行 `npm run test:e2e:install` 安装浏览器，再执行 `npm run test:e2e`；`npm run test:e2e:editing` 单独运行正文、数据库、属性和Office编辑场景。它启动隔离的真实服务端和本机工作台，缺少服务端源码时明确失败；失败截图与 trace 留在忽略的本机目录。运行、Office 服务替身及 CI 范围见[前端测试说明](docs/ui-testing.md)。
+
 开发依赖中的minimatch通过overrides固定为11.0.1，修复说明见[服务端开发入口](../capsule-server/README.md)。升级工具链时重新核对该覆盖。
 
 接口维护于[服务端API契约](../capsule-server/docs/api.md)，客户端运行经HTTP连接服务端。[架构说明](docs/architecture.md)维护客户端职责，[AGENTS.md](AGENTS.md)维护协作与开发约定。
 
 ## 当前边界
 
-运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。整库备份恢复已有管理员接口，恢复仅生成隔离库；cap复制/改名、通用跨cap引用、自动部署切换和周期备份仍未提供，见[覆盖与边界](docs/cli-parity.md)。
+运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。整库备份恢复已有管理员接口，恢复仅生成隔离库；cap改名、通用跨cap引用、自动部署切换和周期备份仍未提供，见[覆盖与边界](docs/cli-parity.md)。
 
 缓存锁异常、未知本地HEAD或脏内容需要先保留并核对；原PID退出不证明孤儿Git已经停止，客户端不自动删锁抢占。处理入口见[同步与运行](docs/architecture.md#同步与运行)。

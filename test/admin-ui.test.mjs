@@ -39,11 +39,55 @@ function fixture(t, respond) {
   return { admin, calls, identities };
 }
 
+test("管理员可创建有登录名密码的editor并更改现有用户名", async (t) => {
+  const { admin, calls } = fixture(t, (input) => {
+    if (input.action === "me") return { principal: { role: "admin" }, permissions: { manage: true } };
+    if (input.action === "users") return { items: [{ id: "employee", name: "编辑同事", username: "editor01", role: "editor", enabled: true, revision: 7 }], total: 1, nextOffset: null };
+    if (["user-create", "user-update"].includes(input.action)) return { user: { id: "employee" } };
+    assert.fail(input.action);
+  });
+  await admin.open(); await admin.load("users");
+  const create = admin.body.querySelectorAll("form").find((form) => form.textContent.includes("创建用户"));
+  const fields = create.querySelectorAll("input");
+  fields[0].value = "同事02"; fields[1].value = "editor02"; fields[2].value = "test-only-new-password";
+  create.emit("submit"); await settled(); await settled();
+  assert.deepEqual(calls.find((call) => call.action === "user-create"), { action: "user-create", name: "同事02", username: "editor02", password: "test-only-new-password", role: "editor" });
+  assert.equal(fields[2].value, "");
+  admin.body.querySelectorAll("button").find((control) => control.textContent === "编辑").click();
+  const edit = admin.body.querySelectorAll("form").find((form) => form.textContent.includes("保存用户"));
+  edit.querySelectorAll("input")[1].value = "renamed-editor";
+  edit.emit("submit"); await settled(); await settled();
+  const update = calls.find((call) => call.action === "user-update");
+  assert.equal(update.username, "renamed-editor"); assert.equal(update.revision, 7);
+  assert.equal(Object.hasOwn(update, "password"), false);
+});
+
+test("管理员设置全体非管理员三档权限，不出现个人授权且不冒用正文token", async (t) => {
+  const { admin, calls } = fixture(t, (input) => {
+    if (input.action === "me") return { principal: { role: "admin" }, permissions: { manage: true } };
+    if (input.action === "cap-access" && input.permission === undefined) return { name: input.name, revision: 12, permission: "edit", protected: false };
+    if (input.action === "cap-access") return { name: input.name, revision: 13, permission: input.permission, protected: false };
+    assert.fail(input.action);
+  });
+  await admin.open(); await admin.load("grants");
+  const lookup = admin.body.querySelectorAll("form")[0];
+  lookup.querySelectorAll("input")[0].value = "管理员资料";
+  lookup.emit("submit"); await settled();
+  const protection = admin.body.querySelectorAll("form").find((form) => form.textContent.includes("保存 cap 权限"));
+  const permissions = protection.querySelectorAll("select");
+  assert.equal(permissions.length, 1);
+  assert.deepEqual(permissions[0].children.map((option) => option.value), ["edit", "read", "none"]);
+  assert.equal(protection.querySelectorAll("input").length, 0);
+  permissions[0].value = "read";
+  protection.emit("submit"); await settled(); await settled();
+  assert.deepEqual(calls.find((call) => call.action === "cap-access" && call.permission), { action: "cap-access", name: "管理员资料", revision: 12, permission: "read" });
+});
+
 test("管理凭据只在签发结果临时展示，关闭管理窗口清除token", async (t) => {
   const identity = { principal: { id: "admin", name: "管理员", role: "admin" }, permissions: { manage: true, create: true, readOnly: false } };
   const { admin, calls } = fixture(t, (input) => {
     if (input.action === "me") return identity;
-    if (input.action === "users") return { items: [{ id: "employee", name: "员工", role: "viewer", enabled: true, revision: 1 }], total: 1, nextOffset: null };
+    if (input.action === "users") return { items: [{ id: "employee", name: "员工", role: "editor", enabled: true, revision: 1 }], total: 1, nextOffset: null };
     if (input.action === "credentials") return { items: [], total: 0, nextOffset: null };
     if (input.action === "credential-create") return { credential: { id: "credential", label: input.label }, token: "only-once-test-token" };
     assert.fail(input.action);
@@ -63,8 +107,8 @@ test("管理凭据只在签发结果临时展示，关闭管理窗口清除token
   assert.equal(admin.element.children.length, 0);
 });
 
-test("只读身份只展示自身信息，管理页无授权不能展开", async (t) => {
-  const { admin, calls } = fixture(t, () => ({ principal: { id: "reader", name: "只读员工", role: "viewer" }, permissions: { manage: false, create: false, readOnly: true } }));
+test("普通员工可查询自身身份但不能展开管理页", async (t) => {
+  const { admin, calls } = fixture(t, () => ({ principal: { id: "employee", name: "普通员工", role: "editor" }, permissions: { manage: false, create: true, readOnly: false } }));
   await admin.open();
   assert.equal(admin.tabs.querySelectorAll("button").length, 1);
   await admin.load("users");

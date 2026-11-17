@@ -1,7 +1,7 @@
 import { button } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 import { ActionMenu } from "./menu.mjs";
-import { canEdit } from "./permissions.mjs";
+import { canCreate, canEdit } from "./permissions.mjs";
 
 export class TreeActions {
   constructor(element, { onManage, onError }) {
@@ -12,6 +12,7 @@ export class TreeActions {
     const item = this.current;
     return [
       { label: "属性", icon: "info", action: () => this.onManage("properties", item) },
+      { label: "复制为新 cap…", disabled: !canCreate(), action: () => this.onManage("copy", item) },
       { separator: true },
       { label: "断开当前挂载…", disabled: !item.path || !canEdit(item), action: () => this.onManage("unlink", item) },
       { separator: true },

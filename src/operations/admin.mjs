@@ -2,11 +2,11 @@ import { capsuleName } from "../system/paths.mjs";
 
 const page = ["limit", "offset"];
 export const adminFields = Object.freeze({
-  me: [], users: page, "user-create": ["name", "role", "enabled"],
-  "user-update": ["id", "revision", "name", "role", "enabled"],
+  me: [], users: page, "user-create": ["name", "role", "enabled", "username", "password"],
+  "user-update": ["id", "revision", "name", "role", "enabled", "username", "password"],
   credentials: ["userId", ...page], "credential-create": ["userId", "label"],
   "credential-revoke": ["id", "revision"], grants: ["name"],
-  "grant-set": ["name", "revision", "userId", "permission"],
+  "cap-access": ["name", "revision", "permission"],
   audit: ["name", "operation", "outcome", ...page],
   backups: page, "backup-create": ["label"], "backup-inspect": ["id"],
   "backup-register": ["id", "checksum"],
@@ -34,7 +34,8 @@ export async function adminOperation(api, operation, input = {}) {
     if (value[key] !== undefined && (!Number.isSafeInteger(value[key]) || value[key] < minimum || key === "limit" && value[key] > 100))
       throw invalid(`${key}超出允许范围`);
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") throw invalid("enabled需要布尔值");
-  if (value.role !== undefined && !["admin", "editor", "viewer"].includes(value.role)) throw invalid("角色需为admin、editor或viewer");
+  if (value.role !== undefined && !["admin", "editor"].includes(value.role))
+    throw invalid("角色需为admin或editor（普通员工）");
   if (operation === "me") return api.json("/api/access/me");
   if (operation === "users") return query(api, "/api/access/users", value);
   if (operation === "user-create") return api.json("/api/access/users", "POST", value);
@@ -42,12 +43,17 @@ export async function adminOperation(api, operation, input = {}) {
   if (operation === "credentials") return query(api, "/api/access/credentials", value);
   if (operation === "credential-create") return api.json("/api/access/credentials", "POST", value);
   if (operation === "credential-revoke") return api.json(`/api/access/credentials/${identifier(value.id)}`, "DELETE", without(value, "id"));
-  if (["grants", "grant-set"].includes(operation)) {
+  if (["grants", "cap-access"].includes(operation)) {
     const name = capsuleName(value.name);
     const path = api.path(name, "access");
     if (operation === "grants") return api.json(path);
-    if (!["read", "edit", null].includes(value.permission)) throw invalid("permission需为read、edit或null（撤销）");
-    return api.json(path, "PUT", without(value, "name"));
+    if (value.permission === undefined) {
+      if (value.revision !== undefined) throw invalid("修改权限需要permission与revision；只读查询不传revision");
+      return api.json(path);
+    }
+    if (!["read", "edit", "none"].includes(value.permission)) throw invalid("permission需为read、edit或none");
+    if (!Number.isSafeInteger(value.revision)) throw invalid("修改权限需要读取时的revision");
+    return api.json(path, "PUT", { revision: value.revision, permission: value.permission });
   }
   if (operation === "audit") return query(api, "/api/audit", { ...without(value, "operation"), action: value.operation });
   if (operation === "backups") return query(api, "/api/backups", value);

@@ -13,6 +13,7 @@ import { editText } from "../operations/content.mjs";
 import { heartbeatActivity, readActivity, releaseActivity } from "../operations/activity.mjs";
 import { adminFields, adminOperation } from "../operations/admin.mjs";
 import { leasedApi, leaseOperation } from "../operations/leases.mjs";
+import { copyCapsule } from "../operations/copy.mjs";
 
 const protectedActions = new Set(["save-details", "office-open", "office-save", "office-write", "table-write", "save", "edit", "update", "write", "delete", "revert", "convert-skill"]);
 
@@ -46,6 +47,7 @@ const allowed = {
   events: ["status", "limit", "offset"],
   event: ["id"],
   create: ["name", "kind", "description", "body", "runtime"],
+  copy: ["name", "to", "token"],
   save: ["name", "entry", "body", "token"],
   edit: ["name", "entry", "oldText", "newText", "all", "token"],
   update: ["name", "description", "runtime", "token"],
@@ -102,6 +104,8 @@ export async function performAction(api, input, { skills, lease } = {}) {
   if (action.startsWith("skill-")) {
     const method = action.slice("skill-".length);
     if (!skills || typeof skills[method] !== "function") throw uiError("本机skill管理服务尚未启动，请先启动客户端界面服务", 503);
+    await api.json("/api/access/me");
+    await api.json(api.path(value.name));
     return skills[method](value.name);
   }
   if (action === "health") return api.json("/api/health");
@@ -126,6 +130,7 @@ export async function performAction(api, input, { skills, lease } = {}) {
     return api.json(`/api/events/${encodeURIComponent(value.id)}`);
   }
   if (action === "create") return api.json("/api/capsules", "POST", value);
+  if (action === "copy") return copyCapsule(api, value);
   if (action === "mount") return mountCapsule(api, value);
   if (action === "position") return positionMount(api, value.path);
   if (action === "move") return moveMount(api, value);

@@ -4,13 +4,14 @@ import { join } from "node:path";
 import { git } from "../src/system/process.mjs";
 
 export async function repositoryFixture(t, source) {
-  const directory = await mkdtemp(join(tmpdir(), "capsule-sync-"));
+  const directory = await mkdtemp(join(tmpdir(), "capsule sync 测试-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const repository = join(directory, "remote");
   await mkdir(repository, { recursive: true });
   await git(["init", "-b", "main"], repository);
   await git(["config", "user.name", "Capsule test"], repository);
   await git(["config", "user.email", "capsule-test@localhost"], repository);
+  await git(["config", "core.autocrlf", "false"], repository);
   await writeFile(join(repository, "main.mjs"), source);
   await mkdir(join(repository, "scripts"));
   await writeFile(join(repository, "SKILL.md"), "---\nname: test-tool\ndescription: Run the test tool through its standalone CLI.\n---\n\n# Test tool\n");

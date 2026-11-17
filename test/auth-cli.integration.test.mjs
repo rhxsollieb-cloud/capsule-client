@@ -1,0 +1,34 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execute } from "../src/system/process.mjs";
+import { ApiClient } from "../src/api/client.mjs";
+import { configuredConnection } from "../src/operations/auth.mjs";
+import { missingServer, serverFixture } from "./serverFixture.mjs";
+
+test("CLI 通过密码文件登录并持久复用会话，兼容维护令牌不被登录或退出替换", { skip: missingServer, timeout: 90000 }, async (t) => {
+  const { cli, directory, clientHome, application } = await serverFixture(t);
+  const passwordFile = join(directory, "employee-password.txt");
+  await writeFile(passwordFile, "integration-password-1234\n", { mode: 0o600 });
+  const user = await cli("user-create", "登录测试员工", "--role", "editor", "--username", "login.employee", "--password-file", passwordFile);
+  assert.equal(user.user.username, "login.employee");
+  const signed = await cli("credential-create", user.user.id, "--label", "兼容维护脚本");
+  const loggedIn = await cli("login", "login.employee", "--password-file", passwordFile);
+  assert.equal(loggedIn.principal.id, user.user.id);
+  assert.equal(loggedIn.principal.credentialKind, "session");
+  assert.equal(loggedIn.token, undefined);
+  const env = { ...process.env, CAPSULE_SERVER_URL: application.url, CAPSULE_CLIENT_HOME: clientHome, CAPSULE_TOKEN: "" };
+  const client = new ApiClient(configuredConnection(env));
+  assert.equal((await client.json("/api/access/me")).principal.id, user.user.id);
+  const command = fileURLToPath(new URL("../src/cli.mjs", import.meta.url));
+  const identity = JSON.parse((await execute(process.execPath, [command, "whoami"], { env })).stdout);
+  assert.equal(identity.principal.id, user.user.id);
+  const agent = new ApiClient(configuredConnection({ ...env, CAPSULE_TOKEN: signed.token }));
+  assert.equal((await agent.json("/api/access/me")).principal.credentialKind, "agent");
+  await execute(process.execPath, [command, "logout"], { env });
+  await assert.rejects(client.json("/api/access/me"), { status: 401 });
+  assert.equal((await agent.json("/api/access/me")).principal.id, user.user.id);
+  assert.equal(configuredConnection(env).token, "");
+});

@@ -6,7 +6,7 @@
 
 小原件缓存按服务端根地址、cap名称和原生entry隔离，只保存该入口最近使用的一份字节。服务端以实际Git blob的强ETag标识原件；仅修改简介或详述时，未变原件仍有相同ETag，无需重新下载整个Office或媒体文件。
 
-缓存字节位于CAPSULE_CLIENT_HOME/content-cache/files，登记、ETag、字节数、摘要和LRU位于顶层client.sqlite的content_cache表。文件以0600原子发布，拒绝符号链接和越界登记；读取验证文件长度、摘要以及字节与Git blob ETag的绑定。缓存不保存员工授权、Bearer或租约凭证，也不在cap内部增加登记。
+缓存字节位于CAPSULE_CLIENT_HOME/content-cache/files，登记、ETag、字节数、摘要和LRU位于顶层client.sqlite的content_cache表。文件以0600模式原子发布，拒绝符号链接和越界登记；Windows 的读取权限继承本机私有目录的 NTFS ACL，不以0600模式代替ACL。读取验证文件长度、摘要以及字节与Git blob ETag的绑定。缓存不保存员工授权、Bearer或租约凭证，也不在cap内部增加登记。
 
 每次使用仍向服务端发送带当前身份的条件GET，只有服务端确认同一ETag的304才使用已验证的本机字节。没有权限时返回真实401/403/404，不离线回退旧内容；同名cap重建也须重新鉴权。cap提交号和token从本次响应取得，Office继续保留读取前后版本核对，旧原件不能冒充当前版本。
 

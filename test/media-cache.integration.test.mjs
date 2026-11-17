@@ -28,7 +28,8 @@ test("工作台原件复用本机缓存、条件重验且不绕过撤权，Range
   const bytes = Buffer.alloc(1024 * 1024, 0x78), file = join(directory, "media-original.bin");
   await writeFile(file, bytes);
   cap = await application.capsules.putFile(cap.name, undefined, file, cap.token);
-  const url = ui.url + "/ui/content?" + new URLSearchParams({ name: cap.name });
+  const session = await (await fetch(ui.url + "/ui/session")).json();
+  const url = ui.url + "/ui/content?" + new URLSearchParams({ name: cap.name, session: session.csrfToken });
   const first = await fetch(url);
   const etag = first.headers.get("ETag");
   assert.ok(etag);

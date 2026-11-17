@@ -21,12 +21,16 @@ import { doctor } from "../runtime/doctor.mjs";
 import { adminCommand } from "./admin.mjs";
 import { leaseCommand } from "./leases.mjs";
 import { leasedApi } from "../operations/leases.mjs";
+import { authCommand } from "./auth.mjs";
+import { copyCommand } from "./copy.mjs";
 
 const handlers = {
+  auth: authCommand,
   admin: adminCommand,
   leases: leaseCommand,
   activity: (api, args) => readActivity(api, { name: args.positional[0] }),
   capsule: capsuleCommand,
+  copy: copyCommand,
   data: dataCommand,
   details: detailsCommand,
   discovery: discoveryCommand,

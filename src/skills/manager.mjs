@@ -15,13 +15,15 @@ const publicSession = (session) => ({ id: session.id, state: session.state, ...(
   ...(session.output ? { output: session.output } : {}), ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {}) });
 
 export class SkillManager {
-  constructor(api) {
+  constructor(api, { shared = { sessions: new Map(), operations: new Map(), closed: false } } = {}) {
     this.api = api;
     this.config = api.config;
-    this.sessions = new Map();
-    this.operations = new Map();
-    this.closed = false;
+    this.shared = shared;
+    this.sessions = shared.sessions;
+    this.operations = shared.operations;
   }
+  get closed() { return this.shared.closed; }
+  set closed(value) { this.shared.closed = value; }
   serial(name, operation) {
     name = capsuleName(name);
     if (this.closed) throw failure("本机 Skill 服务正在关闭");

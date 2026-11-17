@@ -1,7 +1,7 @@
 import { skillEnvironment } from "./environment.mjs";
 import { spawn } from "node:child_process";
-import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
+import { signalProcessTree } from "../system/process-tree.mjs";
 
 export function localPage(value) {
   let url;
@@ -10,20 +10,26 @@ export function localPage(value) {
     throw new Error("Skill UI 地址需要使用本机回环 HTTP 和明确端口");
   return url.href;
 }
-function signal(child, value) {
+async function waitForExit(session, milliseconds) {
+  let timer;
   try {
-    if (process.platform === "win32") child.kill(value);
-    else process.kill(-child.pid, value);
-  } catch (error) { if (error.code !== "ESRCH") throw error; }
+    return await Promise.race([
+      session.exited.then(() => true),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), milliseconds); }),
+    ]);
+  } finally { clearTimeout(timer); }
 }
 export async function stopProcess(session) {
   if (!session.child || !Number.isSafeInteger(session.child.pid)) return;
-  signal(session.child, "SIGTERM");
-  await Promise.race([session.exited, delay(1500)]);
-  // Descendants remain in our process group even if the entry process exits first.
-  signal(session.child, "SIGKILL");
-  await Promise.race([session.exited, delay(1500)]);
-  if (session.child.exitCode === null && session.child.signalCode === null) throw new Error("Skill UI 进程尚未确认退出，请核对本机进程");
+  if (process.platform !== "win32") {
+    await signalProcessTree(session.child, "SIGTERM");
+    await waitForExit(session, 1500);
+  }
+  // Windows requires taskkill /T; child.kill() leaves descendant servers alive.
+  // POSIX descendants remain in our process group after the entry process exits.
+  await signalProcessTree(session.child, "SIGKILL");
+  if (!await waitForExit(session, 1500))
+    throw new Error("Skill UI 进程树尚未确认退出，请核对本机进程；当前占用仍保留");
 }
 
 export function spawnInterface(record, { redact = (value) => value, onExit } = {}) {
@@ -31,6 +37,7 @@ export function spawnInterface(record, { redact = (value) => value, onExit } = {
     CAPSULE_SKILL_COMMIT: record.commit, CAPSULE_SKILL_READY_FD: "3" });
   const child = spawn(process.execPath, [record.uiEntry], {
     cwd: record.work, env: environment, shell: false,
+    windowsHide: true,
     detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe", "pipe"],
   });
   const session = { id: randomUUID(), child, state: "starting", output: "", startedAt: new Date().toISOString() };

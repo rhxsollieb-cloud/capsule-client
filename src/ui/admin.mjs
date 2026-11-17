@@ -13,6 +13,7 @@ export async function sendBackupContent(response, url, api) {
     "Content-Disposition": `attachment; filename="capsule-backup.tar"; filename*=UTF-8''${filename}`,
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
     "Cross-Origin-Resource-Policy": "same-origin", "Content-Security-Policy": "default-src 'none'; sandbox",
+    "Referrer-Policy": "no-referrer",
   };
   const size = source.headers.get("Content-Length");
   if (size) headers["Content-Length"] = size;

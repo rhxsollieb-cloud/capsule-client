@@ -19,6 +19,7 @@ export async function sendOfficeRecovery(response, url, api) {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; sandbox",
   };
   const length = source.headers.get("Content-Length");

@@ -1,4 +1,4 @@
-import { action, initialize, readIdentity } from "./api.mjs";
+import { action, connectionStatus, initialize, isSessionFailure, readIdentity, rebindSessionUrls } from "./api.mjs";
 import { fillIcons } from "./icons.mjs";
 import { KnowledgeTree } from "./tree.mjs";
 import { Inspector } from "./inspector.mjs";
@@ -12,11 +12,19 @@ import { LibraryManagement } from "./library-management.mjs";
 import { Administration } from "./admin.mjs";
 import { canCreate, setIdentity } from "./permissions.mjs";
 import { startPolling } from "./polling.mjs";
+import { Connection } from "./connection.mjs";
+import { identityChangeProof } from "./identity-transition.mjs";
+import { restoreConnectionContent, singleConnection } from "./connection-recovery.mjs";
 
 fillIcons();
 const theme = initializeTheme();
 let shell;
 let toastTimer;
+let authenticated = false;
+let lastPrincipal;
+let lastServerUrl;
+let lastOfficeUrl;
+const connect = singleConnection(connectNow);
 function notify(message, error = false) {
   const toast = document.getElementById("toast");
   toast.textContent = message;
@@ -26,6 +34,7 @@ function notify(message, error = false) {
 }
 function onError(error) {
   notify(`${error.message}${error.eventId ? ` · 事件 ${error.eventId}` : ""}`, true);
+  if (isSessionFailure(error)) void connect();
 }
 
 const inspector = new Inspector({
@@ -87,6 +96,7 @@ const workspace = new Workspace({
   onError,
   onChanged: () => tree.refresh(),
   onCreate: create,
+  onCopy: (cap) => dialogs.copy(cap),
   onRun: (cap, dirty) => dialogs.run(cap, dirty),
   onRevert: (cap, target, dirty) => dialogs.revert(cap, target, dirty),
   onUpload: (cap, entry) => dialogs.upload(cap, entry, async (saved) => {
@@ -112,10 +122,12 @@ const tree = new KnowledgeTree(document.getElementById("tree"), {
   },
   onError,
   onViewChanged: () => shell?.updateView(),
-  onManage: (operation, item) => operation === "properties" ? inspector.open(item) : management.open(operation, item),
+  onManage: (operation, item) => operation === "properties" ? inspector.open(item)
+    : operation === "copy" ? dialogs.copy(item) : management.open(operation, item),
 });
 
 function applyIdentity(identity) {
+  if (identity?.principal) lastPrincipal = identity.principal;
   setIdentity(identity);
   shell?.setIdentity(identity);
   workspace.permissionsChanged();
@@ -123,38 +135,88 @@ function applyIdentity(identity) {
   tree.render();
 }
 const administration = new Administration({ onError, onIdentity: applyIdentity, getCap: () => workspace.cap });
-shell = new LibraryShell({ tree, panel, dialogs, theme, onCreate: create, onReconnect: connect, onAdmin: () => administration.open(), onError });
+function hasDrafts() {
+  return [...workspace.editor.drafts.values(), ...inspector.drafts.values(), ...workspace.databaseDrafts.values()].some((draft) => draft.dirty || draft.saving)
+    || workspace.office?.hasDirty() || workspace.office?.state.saving || administration.busy;
+}
+const connection = new Connection({
+  canChange: (operation, values) => {
+    Object.assign(values, identityChangeProof(operation, values, { dirty: hasDrafts(), principal: lastPrincipal, serverUrl: lastServerUrl, officeEditorUrl: lastOfficeUrl }));
+    return true;
+  },
+  onChanged: async (operation, status, result) => {
+    const principal = status.principal || result.principal;
+    if (operation === "login" && (!lastPrincipal || principal?.id === lastPrincipal.id)) await connect();
+    else location.reload();
+  },
+});
+shell = new LibraryShell({ tree, panel, dialogs, theme, onCreate: create, onReconnect: connect,
+  onConnection: () => connection.open({ identity: lastPrincipal }), onAdmin: () => administration.open(), onError });
 window.addEventListener("beforeunload", (event) => {
-  const dirty = [...workspace.editor.drafts.values(), ...inspector.drafts.values(), ...workspace.databaseDrafts.values()].some((draft) => draft.dirty);
-  if (dirty || workspace.office?.hasDirty() || administration.busy) { event.preventDefault(); event.returnValue = ""; }
+  if (hasDrafts()) { event.preventDefault(); event.returnValue = ""; }
 });
 
-async function connect() {
-  shell.setConnection(false, "连接中");
-  applyIdentity(null);
+async function connectNow() {
+  authenticated = false;
   try {
+    shell.setConnection(false, "连接中");
+    applyIdentity(null);
     const session = await initialize();
-    applyIdentity(await readIdentity());
+    const status = await connectionStatus();
+    if (!status.authenticated) {
+      authenticated = false;
+      shell.setConnection(false, status.error || "请连接并登录");
+      await connection.open({ required: true, identity: lastPrincipal });
+      return;
+    }
+    const identity = await readIdentity();
+    const switched = lastPrincipal && (identity.principal.id !== lastPrincipal.id || session.serverUrl !== lastServerUrl || session.officeEditorUrl !== lastOfficeUrl);
+    if (switched) {
+      if (hasDrafts()) {
+        authenticated = false;
+        await connection.open({ required: true, identity: lastPrincipal });
+        throw new Error("CLI 或其他入口已切换账户，原草稿仍保留。请用原账户重新登录处理草稿，再切换身份。");
+      }
+      location.reload();
+      return;
+    }
+    lastServerUrl = session.serverUrl;
+    lastOfficeUrl = session.officeEditorUrl;
+    applyIdentity(identity);
+    authenticated = true;
     const health = await action("health");
     shell.setConnection(health.status === "ok", health.status === "ok" ? "已连接" : "连接异常", session.serverUrl);
     await tree.refresh();
     if (!tree.selected && tree.mode === "tree" && tree.items.length === 1 && tree.items[0].hasChildren) await tree.toggle(tree.items[0]);
-    await workspace.home((item) => tree.chooseFromOverview(item));
+    const hasSelection = await restoreConnectionContent({ workspace, tree, sessionChanged: session.sessionChanged,
+      rebind: () => rebindSessionUrls(),
+      onOfficeSessionChanged: (office) => notify(office.hasDirty()
+        ? "登录已更新，Office草稿与编辑器已保留。请先核对保存或下载恢复原件，再重新打开文档。"
+        : "登录已更新，Office编辑器已保留；若内容未显示，可在文件菜单重新打开当前版本。"),
+    });
+    if (!hasSelection) await workspace.home((item) => tree.chooseFromOverview(item));
     const initial = new URLSearchParams(location.search).get("cap");
-    if (initial && !workspace.cap) {
+    if (initial && !workspace.cap && !hasSelection) {
       try { await tree.chooseFromOverview(await action("stat", { name: initial })); }
       catch (error) { onError(error); }
     }
-    await workspace.refresh();
+    panel.startPolling({ enabled: () => authenticated });
   } catch (error) {
     shell.setConnection(false, "连接失败 · 点击重试");
+    if (error.status === 401) { authenticated = false; await connection.open({ required: true, identity: lastPrincipal }); }
     onError(error);
   }
 }
-startPolling(() => Promise.all([workspace.refresh(), inspector.refresh()]), { interval: 5000 });
+startPolling(() => Promise.all([workspace.refresh(), inspector.refresh()]), { interval: 5000, enabled: () => authenticated });
 startPolling(async () => {
-  try { applyIdentity(await readIdentity()); }
-  catch { applyIdentity(null); shell.setConnection(false, "身份状态未知 · 点击重新连接"); }
-}, { interval: 30000 });
+  try {
+    const status = await connectionStatus();
+    if (!status.authenticated || status.principal.id !== lastPrincipal?.id || status.serverUrl !== lastServerUrl) { await connect(); return; }
+    applyIdentity(await readIdentity());
+  }
+  catch (error) {
+    applyIdentity(null); shell.setConnection(false, "身份状态未知 · 点击重新连接");
+    if (isSessionFailure(error)) await connect();
+  }
+}, { interval: 30000, enabled: () => authenticated });
 await connect();
-panel.startPolling();

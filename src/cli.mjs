@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
 import { ApiClient } from "./api/client.mjs";
-import { configuration, assertNodeVersion } from "./config.mjs";
+import { assertNodeVersion } from "./config.mjs";
+import { configuredConnection } from "./operations/auth.mjs";
 import { parseArguments } from "./commands/arguments.mjs";
 import { commandDefinition } from "./commands/catalog.mjs";
 import { help } from "./commands/help.mjs";
@@ -21,8 +22,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
     args = parseArguments(argv);
     if (args.command === "help") { io.stdout.write(help(args.topic, { json: args.helpJson })); return 0; }
     await prepareOutput(args.output);
-    if (!commandDefinition(args.command).offline) config = configuration(env);
-    const result = await dispatch(args, config ? new ApiClient(config) : undefined, { stdin: io.stdin || process.stdin });
+    if (!commandDefinition(args.command).offline) config = configuredConnection(env);
+    const result = await dispatch(args, config ? new ApiClient(config) : undefined, { stdin: io.stdin || process.stdin, stderr: io.stderr || process.stderr, env });
     await printResult(result, args, io);
     return args.command === "run" ? result.exitCode || (result.logError ? 1 : 0) : 0;
   } catch (error) {

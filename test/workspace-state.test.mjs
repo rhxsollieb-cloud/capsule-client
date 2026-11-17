@@ -2,6 +2,120 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Workspace } from "../web/workspace.mjs";
 
+function navigationDocument(t) {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: (tag) => ({ tag }) };
+  t.after(() => { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; });
+}
+
+function navigationWorkspace(office) {
+  const rendered = [], errors = [];
+  const cap = { name: "旧 cap", kind: "files", commit: "old" };
+  const workspace = Object.assign(Object.create(Workspace.prototype), {
+    cap, item: { name: cap.name }, entry: "旧正文.txt", mode: "content", selection: 1, office,
+    content: { querySelectorAll: () => [], replaceChildren() {} },
+    editor: { close() {}, drafts: new Map([["旧 cap\0旧正文.txt", { dirty: true, body: "未保存草稿" }]]) },
+    header: { update() {} }, navigation: { hide() {}, show() {}, selectEntry() {}, setMode() {}, selectTable() {} },
+    inspector: { show() {}, context() {} },
+    chrome() {},
+    async load() { rendered.push({ name: this.cap.name, entry: this.entry, mode: this.mode }); },
+    onError(error) { errors.push(error); },
+  });
+  return { workspace, rendered, errors, cap };
+}
+
+const navigationActions = [
+  (workspace) => workspace.openFile("旧目录/附件.txt"),
+  (workspace) => workspace.showFiles(),
+  (workspace) => workspace.showDatabase("旧表"),
+  (workspace) => workspace.showHistory(),
+  (workspace) => workspace.showSkill(),
+  (workspace) => workspace.openDetails({ name: "旧 cap", kind: "files", source: { type: "content", entry: "说明.md" } }),
+  (workspace) => workspace.reopenOffice(),
+];
+
+test("旧 Office 离开晚到不能覆盖后来的 cap 选择或销毁当前页面", async (t) => {
+  navigationDocument(t);
+  t.mock.method(globalThis, "fetch", async (_url, request) => Response.json({ name: JSON.parse(request.body).name, kind: "text", commit: "new" }));
+  let release, attempts = 0, destroyed = 0;
+  const { workspace, rendered } = navigationWorkspace({
+    prepareLeave: () => ++attempts === 1 ? new Promise((resolve) => { release = resolve; }) : Promise.resolve(true),
+    destroy() { destroyed++; },
+  });
+  const drafts = workspace.editor.drafts;
+  const earlier = workspace.select({ name: "较早点击" });
+  await workspace.select({ name: "最后点击" });
+  release(true);
+  assert.equal(await earlier, false);
+  assert.equal(workspace.cap.name, "最后点击");
+  assert.equal(workspace.item.name, "最后点击");
+  assert.deepEqual(rendered.map((value) => value.name), ["最后点击"]);
+  assert.equal(destroyed, 1);
+  assert.equal(workspace.editor.drafts, drafts);
+  assert.equal(drafts.get("旧 cap\0旧正文.txt").body, "未保存草稿");
+});
+
+test("旧内部文件、数据表及视图切换在离开等待期间失效，不应用到新 cap", async (t) => {
+  navigationDocument(t);
+  t.mock.method(globalThis, "fetch", async (_url, request) => Response.json({ name: JSON.parse(request.body).name, kind: "text", commit: "new" }));
+  for (const navigate of navigationActions) {
+    let release, attempts = 0;
+    const { workspace, rendered, errors } = navigationWorkspace({
+      prepareLeave: () => ++attempts === 1 ? new Promise((resolve) => { release = resolve; }) : Promise.resolve(true),
+      destroy() {},
+    });
+    const earlier = navigate(workspace);
+    await workspace.select({ name: "新 cap" });
+    release(true);
+    assert.equal(await earlier, false);
+    assert.equal(workspace.cap.name, "新 cap");
+    assert.equal(workspace.entry, undefined);
+    assert.equal(workspace.mode, "content");
+    assert.deepEqual(rendered.map((value) => value.name), ["新 cap"]);
+    assert.deepEqual(errors, []);
+  }
+});
+
+test("Office 拒绝离开或离开异常时保留选择、页面与草稿，异常只报告一次", async () => {
+  for (const reject of [false, true]) for (const navigate of [(workspace) => workspace.select({ name: "新 cap" }), ...navigationActions]) {
+    const failure = new Error("Office 保存状态未确认");
+    const { workspace, rendered, errors, cap } = navigationWorkspace({
+      async prepareLeave() { if (reject) throw failure; return false; },
+      destroy() { assert.fail("未确认离开不得销毁编辑器"); },
+    });
+    assert.equal(await navigate(workspace), false);
+    assert.equal(workspace.cap, cap);
+    assert.equal(workspace.selection, 1);
+    assert.equal(workspace.entry, "旧正文.txt");
+    assert.equal(workspace.editor.drafts.size, 1);
+    assert.deepEqual(rendered, []);
+    assert.deepEqual(errors, reject ? [failure] : []);
+  }
+});
+
+test("同 cap 的旧 Office 重开查询不能覆盖较新的视图选择", async (t) => {
+  let accept, entered;
+  const querying = new Promise((resolve) => { entered = resolve; });
+  t.mock.method(globalThis, "fetch", () => { entered(); return new Promise((resolve) => { accept = resolve; }); });
+  const { workspace, rendered, cap } = navigationWorkspace(null);
+  const earlier = workspace.reopenOffice();
+  await querying;
+  await workspace.showFiles();
+  accept(Response.json({ ...cap, commit: "late" }));
+  assert.equal(await earlier, false);
+  assert.equal(workspace.cap, cap);
+  assert.equal(workspace.mode, "files");
+  assert.deepEqual(rendered, [{ name: "旧 cap", entry: undefined, mode: "files" }]);
+});
+
+test("内部视图加载异常被调用方捕获，不留下未处理的点击 Promise", async () => {
+  const { workspace, errors } = navigationWorkspace(null);
+  const failure = new Error("视图加载失败");
+  workspace.load = async () => { throw failure; };
+  assert.equal(await workspace.openFile("附件.txt"), false);
+  assert.deepEqual(errors, [failure]);
+});
+
 test("旧目录晚到响应不能替换当前cap的文件分页与显示提交", async (t) => {
   const responses = new Map();
   t.mock.method(globalThis, "fetch", (_url, request) => {

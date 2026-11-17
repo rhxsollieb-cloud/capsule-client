@@ -8,10 +8,11 @@ import { group as skills } from "./catalog/skills.mjs";
 import { group as system } from "./catalog/system.mjs";
 import { group as admin } from "./catalog/admin.mjs";
 import { group as leases } from "./catalog/leases.mjs";
+import { group as auth } from "./catalog/auth.mjs";
 import { presentationOptions } from "./catalog/options.mjs";
 
 export const kinds = ["text", "image", "audio", "video", "excel", "word", "file", "files", "database", "code", "markdown"];
-export const groups = [capsules, content, database, mounts, versions, office, skills, system, admin, leases];
+export const groups = [capsules, content, database, mounts, versions, office, skills, system, auth, admin, leases];
 export const leaseWriteCommands = new Set(["update", "write", "write-details", "put", "remove-entry", "edit", "delete", "revert", "table-write", "office-write", "office-open", "office-save", "convert-skill"]);
 const definitions = groups.flatMap((group) => group.commands.map((command) => [command.name, { ...command, group: group.id }]));
 if (new Set(definitions.map(([name]) => name)).size !== definitions.length) throw new Error("CLI命令名称重复");

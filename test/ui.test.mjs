@@ -122,13 +122,13 @@ test("文本保存透传原版本冲突和事件ID，保留输入且不重放", 
 
 test("媒体通过共享客户端流式上传与Range读取，暂存清空", async (t) => {
   const { app, session, original, config } = await fixture(t);
-  const partial = await fetch(app.url + "/ui/content?name=原件.jpg", { headers: { Range: "bytes=1-3" } });
+  const partial = await fetch(app.url + "/ui/content?name=原件.jpg", { headers: { Range: "bytes=1-3", "X-Capsule-Session": session.csrfToken } });
   assert.equal(partial.status, 206);
   assert.equal(partial.headers.get("Content-Range"), "bytes 1-3/5");
   assert.equal(partial.headers.get("Content-Type"), "image/jpeg");
   assert.equal(partial.headers.get("Authorization"), null);
   assert.deepEqual(Buffer.from(await partial.arrayBuffer()), original.subarray(1, 4));
-  const unsafe = await fetch(app.url + "/ui/content?name=原件.html");
+  const unsafe = await fetch(app.url + "/ui/content?name=原件.html&session=" + session.csrfToken);
   assert.match(unsafe.headers.get("Content-Disposition"), /^attachment/);
   await unsafe.arrayBuffer();
   const uploaded = await fetch(app.url + "/ui/upload?name=原件.jpg", {

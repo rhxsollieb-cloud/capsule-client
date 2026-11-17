@@ -1,6 +1,6 @@
 import { button, formField, node } from "./dom.mjs";
 
-export const roleLabels = { admin: "管理员", editor: "编辑者", viewer: "只读用户" };
+export const roleLabels = { admin: "管理员", editor: "普通员工" };
 export function input(label, value = "", { required = false, type = "text", options } = {}) {
   const control = node(options ? "select" : "input", "property-input");
   if (options) for (const [key, text] of Object.entries(options)) {

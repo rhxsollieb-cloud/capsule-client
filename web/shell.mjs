@@ -3,8 +3,8 @@ import { ActionMenu } from "./menu.mjs";
 import { NavigationResize } from "./navigation-resize.mjs";
 
 export class LibraryShell {
-  constructor({ tree, panel, dialogs, theme, onCreate, onReconnect, onAdmin, onError }) {
-    Object.assign(this, { tree, panel, dialogs, theme, onReconnect, onAdmin });
+  constructor({ tree, panel, dialogs, theme, onCreate, onReconnect, onConnection, onAdmin, onError }) {
+    Object.assign(this, { tree, panel, dialogs, theme, onReconnect, onConnection, onAdmin });
     this.menuButton = document.getElementById("library-menu");
     this.connection = document.getElementById("connection");
     this.badge = document.getElementById("event-badge");
@@ -91,7 +91,7 @@ export class LibraryShell {
       { label: "Agent 操作入口", icon: "terminal", action: () => this.dialogs.agent() },
       { separator: true },
       { label: "刷新知识库", icon: "refresh", action: () => this.tree.refresh() },
-      { label: "连接信息", action: () => this.connectionInfo() },
+      { label: "连接与登录", action: () => this.onConnection ? this.onConnection() : this.connectionInfo() },
       { label: "账户与管理", icon: "info", action: () => this.onAdmin?.() },
       { label: "深色模式", checked: this.theme.isDark(), action: () => this.theme.toggle() },
       { label: "使用说明", action: () => this.help() },

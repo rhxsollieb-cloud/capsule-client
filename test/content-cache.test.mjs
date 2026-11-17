@@ -44,7 +44,9 @@ test("重复读取和仅元数据变更以304复用原件，每次仍鉴权并�
   assert.equal(metadata.response.headers.get("Content-Length"), String(state.bytes.length));
   assert.equal(state.requests, 3); assert.equal(state.transfers, 1); assert.equal(state.transferredBytes, state.bytes.length);
   const files = await readdir(join(home, "content-cache", "files"));
-  assert.equal(files.length, 1); assert.equal((await stat(join(home, "content-cache", "files", files[0]))).mode & 0o777, 0o600);
+  assert.equal(files.length, 1);
+  if (process.platform !== "win32")
+    assert.equal((await stat(join(home, "content-cache", "files", files[0]))).mode & 0o777, 0o600);
   const rows = await withClientDatabase(home, (db) => db.prepare("SELECT * FROM content_cache").all());
   assert.equal(JSON.stringify(rows).includes("employee-secret"), false);
   assert.equal(JSON.stringify(rows).includes("token-metadata-only"), false);

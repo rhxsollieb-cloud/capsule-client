@@ -3,6 +3,7 @@ import { button, directoryKinds, fileKind, formField, kindLabels, node, replace,
 import { capsuleEntry } from "./markdown-paths.mjs";
 import { canCreate, canEdit } from "./permissions.mjs";
 import { editLease, leaseMessage, withEditLease } from "./edit-lease.mjs";
+import { copyDialog } from "./copy-dialog.mjs";
 
 export class Dialogs {
   constructor({ onCreated, onError, onRun, onRevert }) {
@@ -13,7 +14,10 @@ export class Dialogs {
     if (this.element.open) this.element.close();
     const form = node("form", "dialog-form");
     const header = node("div", "dialog-header");
-    header.append(node("h2", "", title), button("×", () => this.element.close(), "icon-button"));
+    const heading = node("h2", "", title);
+    heading.id = "dialog-title";
+    this.element.setAttribute("aria-labelledby", heading.id);
+    header.append(heading, button("×", () => this.element.close(), "icon-button"));
     const fields = node("div", "dialog-fields");
     const error = node("p", "error-message dialog-error");
     const actions = node("div", "dialog-actions");
@@ -23,6 +27,7 @@ export class Dialogs {
     return { form, fields, error, actions };
   }
   show() { this.element.showModal(); }
+  copy(item) { return copyDialog(this, item); }
   upload(cap, entry, onUploaded) {
     if (!canEdit(cap)) { this.onError(new Error("当前身份没有该 cap 的修改权限")); return; }
     const markdown = cap.kind === "markdown";

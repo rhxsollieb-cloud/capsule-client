@@ -1,0 +1,18 @@
+.connection-dialog { width: min(460px, calc(100vw - 28px)); }
+.connection-dialog .dialog-header { padding: 16px 22px; }
+.connection-fields { padding: 4px 22px 22px; }
+.connection-note { margin: 0; padding: 10px 22px 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.connection-note:empty { display: none; }
+.connection-identity { font-weight: 600; font-size: 13px; }
+.connection-form { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.connection-form input { width: 100%; }
+.connection-form > .button { min-height: 36px; font-size: 12px; }
+.connection-advanced { font-size: 11px; }
+.connection-advanced summary { cursor: pointer; padding: 2px 0 8px; }
+.connection-advanced .field { margin-top: 5px; }
+.connection-account-actions { display: flex; justify-content: space-between; gap: 10px; padding-top: 18px; }
+.connection-password-form { padding-top: 18px; border-top: 1px solid var(--border); }
+.connection-busy form, .connection-busy .connection-account-actions { pointer-events: none; opacity: .6; }
+.login-required { visibility: hidden; }
+.connection-required::backdrop { background: var(--canvas); }
+@media (max-height: 620px) { .connection-dialog { max-height: calc(100dvh - 16px); } }

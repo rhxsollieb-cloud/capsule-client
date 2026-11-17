@@ -1,4 +1,4 @@
-import { action } from "./api.mjs";
+import { action, sessionUrl } from "./api.mjs";
 import { node, replace, shortCommit } from "./dom.mjs";
 import { loadOfficeApi } from "./office-loader.mjs";
 import { OfficeState } from "./office-state.mjs";
@@ -125,7 +125,7 @@ export class OfficeView {
     }
     if (session.result && session.saveVersion > previousVersion) this.onSaved?.(session.result);
     if (session.recoveryAvailable) {
-      this.recovery.href = `/ui/office/recovery?${new URLSearchParams({ id: session.id })}`;
+      this.recovery.href = sessionUrl("/ui/office/recovery", { id: session.id });
     }
     this.recovery.classList.toggle("hidden", !session.recoveryAvailable || !["conflict", "error", "closed"].includes(session.status));
     if (["conflict", "error"].includes(session.status)) this.message(session.error?.message || "保存未完成，编辑结果已保留，请下载恢复原件后核对。", true);

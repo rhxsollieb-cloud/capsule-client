@@ -7,5 +7,5 @@ export function canCreate() { return identity === undefined || identity?.permiss
 export function canEdit(cap) {
   if (identity === null || identity?.permissions?.readOnly) return false;
   if (cap?.permissions) return cap.permissions.edit === true;
-  return identity === undefined || Boolean(identity && !identity.permissions?.readOnly && identity.principal?.role !== "viewer");
+  return identity === undefined || Boolean(identity && !identity.permissions?.readOnly);
 }

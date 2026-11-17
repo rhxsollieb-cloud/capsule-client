@@ -135,11 +135,11 @@ export class EventPanel {
       this.watched.delete(event.id);
     } finally { this.finishing.delete(event.id); }
   }
-  startPolling() {
+  startPolling({ enabled = () => true } = {}) {
     this.poller?.stop();
     this.poller = startPolling(() => {
       const visible = !this.element.classList.contains("hidden") && this.mode === "events";
       return this.refresh(visible ? {} : { eventsOnly: true, quiet: true });
-    }, { interval: () => !this.element.classList.contains("hidden") && this.mode === "events" ? 3000 : 30000, immediate: true });
+    }, { interval: () => !this.element.classList.contains("hidden") && this.mode === "events" ? 3000 : 30000, immediate: true, enabled });
   }
 }

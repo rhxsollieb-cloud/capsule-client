@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { execute, git } from "../system/process.mjs";
-import { prepareWorkingCopy } from "../system/gitWorkingCopy.mjs";
+import { assertWorkingTree, prepareWorkingCopy, validateCheckoutTree } from "../system/gitWorkingCopy.mjs";
 import { capsuleName } from "../system/paths.mjs";
 import { withCacheLock } from "./lock.mjs";
 import { findCachedVersion, saveCachedVersion } from "./metadata.mjs";
@@ -43,8 +43,7 @@ async function assertRepository(repository) {
     if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()))
       throw new Error("缓存Git目录或属性位置不安全，请核对本机缓存");
   }
-  if (await git(["rev-parse", "--show-toplevel"], repository) !== await realpath(repository))
-    throw new Error("缓存工作树指向其他目录，同步已停止");
+  await assertWorkingTree(repository, "缓存工作树指向其他目录，同步已停止");
 }
 
 async function verifyVersion(repository, commit) {
@@ -112,6 +111,7 @@ export async function synchronize(api, name, { kind } = {}) {
       }
       if (!present) { await assertRepository(target); await prepareWorkingCopy(target); }
       if (previous !== capsule.commit) await verifyVersion(target, capsule.commit);
+      await validateCheckoutTree(target, capsule.commit);
       // Keep every successfully verified version reachable for exact historical consumers.
       await git(["update-ref", `refs/capsule-cache/${capsule.commit}`, capsule.commit], target);
       if (previous !== capsule.commit) await git(["checkout", "--detach", capsule.commit], target);

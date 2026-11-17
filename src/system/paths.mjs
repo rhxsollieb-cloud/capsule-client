@@ -1,5 +1,6 @@
 import { lstat, realpath } from "node:fs/promises";
 import { resolve, relative, isAbsolute, sep } from "node:path";
+import { assertWindowsEntries } from "./windowsPaths.mjs";
 
 export function capsuleName(value) {
   if (
@@ -29,6 +30,7 @@ export function entryPath(value) {
 
 export async function regularEntry(root, entry) {
   entryPath(entry);
+  if (process.platform === "win32") assertWindowsEntries([entry]);
   const base = await realpath(root);
   let current = base;
   for (const part of entry.split("/")) {

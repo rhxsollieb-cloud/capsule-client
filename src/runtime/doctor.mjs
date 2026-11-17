@@ -4,6 +4,8 @@ export async function doctor(config) {
   const git = await execute("git", ["--version"]);
   return {
     node: process.versions.node,
+    platform: process.platform,
+    architecture: process.arch,
     git: git.stdout.trim(),
     serverUrl: config.serverUrl,
     clientUrl: config.clientUrl,

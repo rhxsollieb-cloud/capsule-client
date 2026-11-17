@@ -48,6 +48,7 @@ export async function sendMedia(request, response, url, api) {
     "Cache-Control": source.headers.has("ETag") ? "private, no-cache" : "no-store",
     "X-Content-Type-Options": "nosniff",
     "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; sandbox",
   };
   for (const header of ["content-length", "content-range", "accept-ranges", "etag", "x-capsule-commit", "x-capsule-token"]) {

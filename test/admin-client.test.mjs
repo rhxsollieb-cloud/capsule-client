@@ -40,13 +40,15 @@ test("管理CLI和界面复用相同操作，修订、授权与审计过滤不�
   const cases = [
     [["me"], { action: "me" }],
     [["users", "--offset", "30"], { action: "users", offset: 30 }],
-    [["user-create", "员工 / 甲", "--role", "viewer", "--enabled=false"], { action: "user-create", name: "员工 / 甲", role: "viewer", enabled: false }],
+    [["user-create", "员工 / 甲", "--role", "editor", "--enabled=false"], { action: "user-create", name: "员工 / 甲", role: "editor", enabled: false }],
     [["user-update", "user-1", "--revision", "2", "--enabled=false"], { action: "user-update", id: "user-1", revision: 2, enabled: false }],
     [["credentials", "--user-id", "user-1"], { action: "credentials", userId: "user-1" }],
     [["credential-create", "user-1", "--label", "办公电脑"], { action: "credential-create", userId: "user-1", label: "办公电脑" }],
     [["credential-revoke", "key-1", "--revision", "1"], { action: "credential-revoke", id: "key-1", revision: 1 }],
     [["grants", "产品说明.md"], { action: "grants", name: "产品说明.md" }],
-    [["grant-set", "产品说明.md", "user-1", "--revision", "7", "--permission", "none"], { action: "grant-set", name: "产品说明.md", userId: "user-1", revision: 7, permission: null }],
+    [["cap-access", "产品说明.md"], { action: "cap-access", name: "产品说明.md" }],
+    [["cap-access", "产品说明.md", "--revision", "7", "--permission", "read"], { action: "cap-access", name: "产品说明.md", revision: 7, permission: "read" }],
+    [["cap-protect", "产品说明.md", "--revision", "8", "--protected=true"], { action: "cap-access", name: "产品说明.md", revision: 8, permission: "none" }],
     [["audit", "--action", "capsule.write", "--outcome", "success"], { action: "audit", operation: "capsule.write", outcome: "success" }],
     [["backup-create", "--label", "上线前"], { action: "backup-create", label: "上线前" }],
     [["backup-register", "backup-1", "--checksum", "sha256"], { action: "backup-register", id: "backup-1", checksum: "sha256" }],
@@ -70,7 +72,12 @@ test("管理入口拒绝任意恢复路径和未知字段，归档ID按单段编
   const { api, calls } = fixture();
   await assert.rejects(adminOperation(api, "backup-restore", { id: "backup-1", target: "/active" }), /参数无效/);
   await assert.rejects(performAction(api, { action: "credential-create", userId: "user", label: "key", token: "arbitrary" }), /参数无效/);
-  await assert.rejects(adminOperation(api, "grant-set", { name: "cap", userId: "u", revision: 1, permission: "owner" }), /permission/);
+  await assert.rejects(adminOperation(api, "cap-access", { name: "cap", revision: 1, permission: "owner" }), /permission/);
+  await assert.rejects(adminOperation(api, "cap-access", { name: "cap", revision: 1 }), /permission/);
+  await assert.rejects(adminOperation(api, "cap-access", { name: "cap", permission: "read" }), /revision/);
+  await assert.rejects(adminOperation(api, "grant-set", { name: "cap", userId: "u", revision: 1, permission: "read" }), /未知管理操作/);
+  await assert.rejects(adminOperation(api, "user-create", { name: "旧只读角色", role: "viewer" }), /admin或editor/);
+  await assert.rejects(dispatch(parseArguments(["grant-set", "cap", "user", "--revision", "1", "--permission", "edit"]), api), /个人授权已停用/);
   await assert.rejects(adminOperation(api, "users", { limit: 101 }), /范围/);
   assert.equal(calls.length, 0);
   assert.equal(backupContentPath("../other"), "/api/backups/..%2Fother/content");
@@ -154,7 +161,7 @@ test("本机管理桥接不向全局session泄露新旧凭据，备份归档流�
   assert.equal((await response.json()).token, "issued-test-token");
   const secondSession = await (await fetch(app.url + "/ui/session")).json();
   assert.equal(JSON.stringify(secondSession).includes("test-token"), false);
-  const archive = await fetch(app.url + "/ui/admin/backup-content?id=backup-1");
+  const archive = await fetch(app.url + "/ui/admin/backup-content?id=backup-1&session=" + session.csrfToken);
   assert.equal(await archive.text(), "archive-content");
   assert.equal(archive.headers.get("Cache-Control"), "no-store");
   assert.match(archive.headers.get("Content-Disposition"), /^attachment/);
