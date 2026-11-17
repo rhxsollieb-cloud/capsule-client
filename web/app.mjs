@@ -1,4 +1,4 @@
-import { action, initialize } from "./api.mjs";
+import { action, initialize, readIdentity } from "./api.mjs";
 import { fillIcons } from "./icons.mjs";
 import { KnowledgeTree } from "./tree.mjs";
 import { Inspector } from "./inspector.mjs";
@@ -9,6 +9,9 @@ import { node, replace } from "./dom.mjs";
 import { initializeTheme } from "./theme.mjs";
 import { LibraryShell } from "./shell.mjs";
 import { LibraryManagement } from "./library-management.mjs";
+import { Administration } from "./admin.mjs";
+import { canCreate, setIdentity } from "./permissions.mjs";
+import { startPolling } from "./polling.mjs";
 
 fillIcons();
 const theme = initializeTheme();
@@ -78,7 +81,7 @@ const dialogs = new Dialogs({
     }
   },
 });
-const create = () => dialogs.create(tree.selected?.path || "/");
+const create = () => { if (canCreate()) dialogs.create(tree.selected?.path || "/"); else onError(new Error("当前身份没有创建权限")); };
 const workspace = new Workspace({
   inspector,
   onError,
@@ -112,16 +115,26 @@ const tree = new KnowledgeTree(document.getElementById("tree"), {
   onManage: (operation, item) => operation === "properties" ? inspector.open(item) : management.open(operation, item),
 });
 
-shell = new LibraryShell({ tree, panel, dialogs, theme, onCreate: create, onReconnect: connect, onError });
+function applyIdentity(identity) {
+  setIdentity(identity);
+  shell?.setIdentity(identity);
+  workspace.permissionsChanged();
+  inspector.permissionsChanged();
+  tree.render();
+}
+const administration = new Administration({ onError, onIdentity: applyIdentity, getCap: () => workspace.cap });
+shell = new LibraryShell({ tree, panel, dialogs, theme, onCreate: create, onReconnect: connect, onAdmin: () => administration.open(), onError });
 window.addEventListener("beforeunload", (event) => {
   const dirty = [...workspace.editor.drafts.values(), ...inspector.drafts.values(), ...workspace.databaseDrafts.values()].some((draft) => draft.dirty);
-  if (dirty || workspace.office?.hasDirty()) { event.preventDefault(); event.returnValue = ""; }
+  if (dirty || workspace.office?.hasDirty() || administration.busy) { event.preventDefault(); event.returnValue = ""; }
 });
 
 async function connect() {
   shell.setConnection(false, "连接中");
+  applyIdentity(null);
   try {
     const session = await initialize();
+    applyIdentity(await readIdentity());
     const health = await action("health");
     shell.setConnection(health.status === "ok", health.status === "ok" ? "已连接" : "连接异常", session.serverUrl);
     await tree.refresh();
@@ -138,6 +151,10 @@ async function connect() {
     onError(error);
   }
 }
-setInterval(() => { workspace.refresh(); inspector.refresh(); }, 5000);
+startPolling(() => Promise.all([workspace.refresh(), inspector.refresh()]), { interval: 5000 });
+startPolling(async () => {
+  try { applyIdentity(await readIdentity()); }
+  catch { applyIdentity(null); shell.setConnection(false, "身份状态未知 · 点击重新连接"); }
+}, { interval: 30000 });
 await connect();
 panel.startPolling();

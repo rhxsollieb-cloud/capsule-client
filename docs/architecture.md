@@ -13,6 +13,8 @@ src/commands/catalog/按能力维护唯一命令声明，参数解析、分层�
 
 web/shell.mjs负责按需工具与导航折叠，document-header.mjs管理内容标题、保存状态、活动提示和菜单，tree-actions.mjs提供节点菜单，library-management.mjs编排断链/清除预览及确认。inspector.mjs维护独立属性弹窗、版本与说明草稿，inspector-details.mjs负责分页正文和按需媒体浏览；属性查看不切换中央编辑器，文字只引用已有正文。web/activity.mjs维护可过期的编辑心跳及活动呈现，不替代token或事件回执。Workspace在确认清除且没有同名重建后失效对应请求与视图；删除与回撤分别处理终态。交互规则由[ui.md](ui.md)维护。
 
+src/operations/leases.mjs与CLI、BFF共用占用协议，proof只随白名单写入发送；web/edit-lease.mjs负责请求代次、5秒续期、保守到期、立即释放及同tab面板引用共享。失联不自动重新获取或重放保存。正文、属性、表格与Office各自维护编辑意图和草稿，统一租约规则由服务端裁决，见[并发说明](../../capsule-server/docs/concurrency.md)。
+
 src/office/sessions.mjs为CLI和图形桥接提供ONLYOFFICE会话、保存及恢复入口。web/office.mjs维护编辑器生命周期，office-state.mjs单独维护脏状态与保存确认，活跃编辑器不会被后台cap刷新重建。服务端保存回调仍通过统一内容写入及Git提交；具体边界见office.md。src/preview/和其余office批处理模块继续承担Agent渐进提取与显式结构化修改，不再提供主界面模板编辑。
 
 src/database/从SQLite自身读取表结构，适配带主键的业务行操作；SQL仍由服务端node:sqlite执行。浏览器Tabulator网格负责排序、筛选与编辑草稿，保存经共享适配和原有SQL事务入口，不增加内部查询库。browser/仅维护浏览器依赖入口，esbuild生成忽略的web/vendor/供同源加载。
@@ -20,6 +22,10 @@ src/database/从SQLite自身读取表结构，适配带主键的业务行操作�
 客户端顶层client.sqlite保存每个服务端/cap/提交的元数据快照、当前缓存头、Skill登记和运行记录。缓存目录保存Git对象及原生内容，数据库不存放第二份代码或媒体原件。
 
 ## 同步与运行
+
+src/cache/content.mjs和content-store.mjs维护独立的轻量原件缓存，服务Office解析与本机媒体桥接；不为单文件读取下载整个Git历史。每次用当前凭据条件重验ETag，权限不缓存，登记和LRU位于client.sqlite，字节仅放content-cache/。web/polling.mjs管理纯查询可见性，web/api.mjs只合并进行中的只读请求。具体容量、回收及查询频率唯一维护于[原件缓存与流量](content-cache.md)。
+
+src/operations/admin.mjs维护员工、授权、审计和备份协议，CLI的admin能力组与src/ui/actions.mjs共用，不建立独立权限实现。web/admin.mjs负责弹窗生命周期，admin-users/admin-backups/admin-common各自负责管理面板；web/permissions.mjs从me及cap权限投影控制交互。新个人凭据只在签发时展示；本地原件、缓存和运行记录仍由既有模块管理，账户/授权/审计与备份登记均在服务端顶层SQLite。详见[员工身份](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
 
 同步在持锁后取得提交及元数据，校验本地对象，必要时下载bundle，核对checkout后发布缓存记录。单文件仓库树只有该文件，目录仓库树就是原生内容；客户端缓存不按虚拟路径搬动。
 
@@ -47,9 +53,11 @@ src/cache/snapshot.mjs在同一缓存锁下核对路径、干净工作树、所�
 
 client.sqlite的首次schema检测与建表在BEGIN IMMEDIATE内复查版本，允许多个CLI首次共同初始化；已有v3记录保持原状，未知格式不覆盖。元数据发布及当前缓存头在同一SQLite事务中更新。
 
-run仅允许code Skill，从精确提交构建工作目录，核对所选版本、SKILL.md及固定CLI入口。通过分离argv启动独立CLI，不因工程声明第三方依赖一概拒绝，也不隐式安装依赖。src/skills按格式、注册存储、版本工作区、环境、UI进程与管理编排拆分；workspace.mjs负责工作区发布与Git对象校验，environment.mjs统一移除两项指定凭据，其他宿主环境仍继承。物理路径归src/storage/paths.mjs，协议、环境和生命周期见[skills.md](skills.md)。
+run仅允许code Skill，从精确提交构建工作目录，核对所选版本、SKILL.md及固定CLI入口。通过分离argv启动独立CLI，不因工程声明第三方依赖一概拒绝，也不隐式安装依赖。src/skills按格式、注册存储、版本工作区、环境、UI进程与管理编排拆分；workspace.mjs负责工作区发布与Git对象校验，environment.mjs统一移除员工、租约及Office JWT三项指定凭据，其他宿主环境仍继承。Skill注册、启动与停止另用跨进程生命周期短锁，退出回写核对原会话，避免不同BFF覆盖登记；不跨UI整个运行期持锁。物理路径归src/storage/paths.mjs，协议、环境和生命周期见[skills.md](skills.md)。
 
 客户端尝试把实际执行结果、工作位置、收集到的stdout/stderr、退出码写入client.sqlite；--log-cap显式选择数据库cap记录cap_run_logs。本机或远端日志保存失败会返回logError并非零退出，不保证失败的那份记录已经持久化，也不自动重新运行工具。环境、依赖与直接CLI调用边界由[skills.md](skills.md)维护。
+
+客户端Git调用在命令级禁用自动维护及后台重打包，不改员工全局Git配置。Git命令退出后不允许另起维护进程越过缓存锁移动pack；完整fsck继续执行，失败保留stdout/stderr诊断并停止同步。缓存空间维护需另行安排受控生命周期，不通过自动重试或忽略校验处理。
 
 ## 单文件与目录
 

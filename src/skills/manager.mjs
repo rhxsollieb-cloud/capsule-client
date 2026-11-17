@@ -1,13 +1,15 @@
 import { synchronize } from "../cache/sync.mjs";
 import { capsuleName } from "../system/paths.mjs";
 import { CLI_ENTRY } from "./format.mjs";
-import { readRegistration, saveRegistration } from "./registry.mjs";
+import { readRegistration, saveRegistration, updateRegistrationSession } from "./registry.mjs";
 import { spawnInterface, stopProcess } from "./process.mjs";
 import { prepareSkillWorkspace, verifySkillWorkspace } from "./workspace.mjs";
+import { withCacheLock } from "../cache/lock.mjs";
+import { skillPaths } from "../storage/paths.mjs";
 
 const failure = (message, code = "SKILL_LOCAL") => Object.assign(new Error(message), { status: 409, code });
 const active = (session) => session && ["starting", "running", "stopping"].includes(session.state);
-const publicSession = (session) => ({ state: session.state, ...(session.url ? { url: session.url } : {}),
+const publicSession = (session) => ({ id: session.id, state: session.state, ...(session.url ? { url: session.url } : {}),
   ...(session.child?.pid ? { pid: session.child.pid } : {}),
   startedAt: session.startedAt, ...(session.error ? { error: session.error } : {}),
   ...(session.output ? { output: session.output } : {}), ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {}) });
@@ -24,10 +26,17 @@ export class SkillManager {
     name = capsuleName(name);
     if (this.closed) throw failure("本机 Skill 服务正在关闭");
     const previous = this.operations.get(name) || Promise.resolve();
-    const current = previous.catch(() => {}).then(operation);
+    const current = previous.catch(() => {}).then(() => this.lifecycle(name, operation));
     this.operations.set(name, current);
     current.finally(() => { if (this.operations.get(name) === current) this.operations.delete(name); }).catch(() => {});
     return current;
+  }
+  async lifecycle(name, operation) {
+    try { return await withCacheLock(skillPaths(this.config, name).directory + ".lifecycle.lock", operation, { timeoutMs: 0 }); }
+    catch (error) {
+      if (error.code === "CACHE_BUSY") throw failure("另一个本机客户端正在注册、启动或关闭此Skill，请查询原状态后重试", "SKILL_BUSY");
+      throw error;
+    }
   }
   register(name) { name = capsuleName(name); return this.serial(name, () => this.registerNow(name)); }
   async registerNow(name) {
@@ -79,8 +88,7 @@ export class SkillManager {
       if (!record.uiEntry) throw failure("此 Skill 没有 scripts/ui.mjs；直接使用独立 CLI 即可", "SKILL_NO_UI");
       await verifySkillWorkspace(record);
       const session = spawnInterface(record, { redact: (value) => this.api.redact(value), onExit: async (finished) => {
-        const current = await readRegistration(this.config, name);
-        if (current?.commit === record.commit) await saveRegistration(this.config, { ...current, lastSession: publicSession(finished) });
+        await updateRegistrationSession(this.config, name, finished.id, publicSession(finished));
       } });
       this.sessions.set(name, session);
       try {
@@ -128,7 +136,8 @@ export class SkillManager {
   async close() {
     this.closed = true;
     await Promise.allSettled([...this.operations.values()]);
-    const stopped = await Promise.allSettled([...this.sessions.keys()].map((name) => this.stopNow(name)));
+    const pending = [...this.sessions].filter(([, session]) => active(session) || session.child?.exitCode === null && session.child?.signalCode === null);
+    const stopped = await Promise.allSettled(pending.map(([name]) => this.lifecycle(name, () => this.stopNow(name))));
     const failed = stopped.find((result) => result.status === "rejected");
     if (failed) throw failed.reason;
   }

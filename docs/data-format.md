@@ -31,6 +31,8 @@
 
 名称、kind与最多180字符的简述用于轻量列表。详述按需通过details读取；文字类复用正文，不保存第二份详情。媒体/Office等只在顶层保存一份details，详述修改也受token与版本保护。属性弹窗按Markdown呈现，保存的仍是原始文本。
 
+员工、凭据、cap授权、审计与备份登记也在服务端顶层SQLite，分别用access_*和backup_records维护，不增加cap内部登记或Git字段。先用me核对个人身份；admin管理全库，editor/viewer按cap授权访问。响应permissions是当前主体的能力投影，不能由客户端自行授予。授权按cap key与incarnation判断，多处挂载共用权限，同名重建不继承授权。列表与搜索先过滤不可读实体，404不能用于区分未授权与不存在。身份、授权及备份命令见[管理说明](../../capsule-server/docs/access.md)和[备份恢复](../../capsule-server/docs/backups.md)。
+
 当前stat的公开记录示意如下，commit/token的示意文字不能直接用于请求；非code不带runtime。虚拟位置、详述全文和本机运行状态均按需另查，不堆进每条概要。
 
 ```json
@@ -68,11 +70,15 @@ query按类别检索实际文本或只读查询SQLite；search按虚拟范围去
 
 多人连接同一服务端，普通正文/SQLite同时保存会逐一核对原token。`activity 名称`只读查询全部未过期编辑会话、真实排队事件、Office状态和队列诊断，不注册心跳。图形客户端会排除自身tab的编辑会话，CLI没有这个过滤；会话数不是人数。编辑提示非排他、会过期，不等于锁定或保存成功；查询失败不能当作无人编辑。LOCK_BUSY先核对占用，EVENT_BUSY先查原事件；恢复失败与工作区占用另按code处理，不绕过token。心跳及界面呈现由[界面说明](ui.md#并发活动提示)维护。
 
+长期编辑另用顶层SQLite的cap租约，content/details/database独占、office协作共享，不在cap内部加锁登记。lease-status/acquire/renew/release与--lease提供Agent入口；EDIT_BUSY显示当前持有者，EDIT_LEASE_LOST保留草稿并重新获取，不能自动换token强写。粒度、快速释放和异常回收见[并发说明](../../capsule-server/docs/concurrency.md)。
+
 位置move/unmount使用position取得的子树token。整cap清除使用removal预览返回的实体token与mountsToken，两者都要核对。organize用独立baseline预演mount/move/unmount，正式提交只涉及位置事务，续页查receipt，不能重放计划翻页。
 
 revert按目标commit恢复内容和当时元数据，然后生成新提交，保留历史；虚拟位置独立管理。回撤和清除经过持久事件队列，先查原event/eventId的终态再判断结果。网络中断、超时或uncertain不证明未执行，不能自动重提。
 
 断链只移除当前叶挂载，保留cap及版本；清除删除整个cap、全部挂载和独立Git，不能通过revert找回。清除前核对阻止原因和完整范围；有子挂载、未完事件或活跃Office时可能被拒绝。
+
+永久清除、全局位置organize及其回执只允许admin。员工、凭据和授权各用自身revision，不能拿cap token代替。凭据撤销、员工禁用或授权降低在请求和实际写入/队列执行前重查；审计以实际主体及eventId归因，不保存正文与令牌。Office只读使用view配置，保存同样核对原身份与版本。
 
 ## SQLite、媒体和日志
 

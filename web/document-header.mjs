@@ -68,7 +68,7 @@ export class DocumentHeader {
     this.save.classList.toggle("hidden", !controls?.save || !(controls.canSave || state === "saving"));
     this.save.disabled = !controls?.canSave;
     this.mode.classList.toggle("hidden", !controls?.toggleMode);
-    this.mode.title = controls?.mode === "read" ? "编辑 Markdown" : "预览 Markdown";
+    this.mode.title = controls?.modeTitle || (controls?.mode === "read" ? "编辑 Markdown" : "预览 Markdown");
     this.mode.setAttribute("aria-label", this.mode.title);
     replace(this.mode, icon(controls?.mode === "read" ? "edit" : "eye"));
     this.more.disabled = !model?.cap;
@@ -79,7 +79,7 @@ export class DocumentHeader {
     const controls = model.controls;
     return [
       controls?.save && { label: "保存", icon: "save", shortcut: "⌘ / Ctrl S", disabled: !controls.canSave, action: controls.save },
-      controls?.toggleMode && { label: controls.mode === "read" ? "编辑 Markdown" : "预览 Markdown", icon: controls.mode === "read" ? "edit" : "eye", action: controls.toggleMode },
+      controls?.toggleMode && { label: controls.modeTitle || (controls.mode === "read" ? "编辑 Markdown" : "预览 Markdown"), icon: controls.mode === "read" ? "edit" : "eye", action: controls.toggleMode },
       ...(controls?.moreItems || []).map((item) => item?.information ? {
         ...item, action: () => this.showInformation(item.information.title, item.information.values),
       } : item),

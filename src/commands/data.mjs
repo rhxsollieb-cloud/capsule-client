@@ -1,5 +1,6 @@
 import { capsuleName, entryPath } from "../system/paths.mjs";
 import { readJsonInput, readTextInput } from "./input.mjs";
+import { revalidatedContent } from "../cache/content.mjs";
 
 function parameters(value) {
   if (value === undefined) return undefined;
@@ -59,7 +60,9 @@ export async function dataCommand(api, { command, positional, values }, context)
   const name = capsuleName(positional[0]);
   if (command === "get") {
     const entry = positional.length === 2 ? undefined : entryPath(positional[1]);
-    const result = await api.download(api.path(name, "content", { entry }), positional.at(-1));
+    const result = await api.download(api.path(name, "content", { entry }), positional.at(-1), {
+      openResponse: async () => (await revalidatedContent(api, name, entry, { allowStreaming: true })).response,
+    });
     return { name, entry, ...result };
   }
   const input = command === "query" ? queryInput(values) : await writeInput(values, context);

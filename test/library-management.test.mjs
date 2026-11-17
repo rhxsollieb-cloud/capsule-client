@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LibraryManagement } from "../web/library-management.mjs";
+import { leaseReply } from "./leaseFixture.mjs";
+
+const settled = () => new Promise((resolve) => setImmediate(resolve));
 
 function fixture(t, respond, callbacks = {}) {
   const previous = globalThis.document;
@@ -35,6 +38,7 @@ function fixture(t, respond, callbacks = {}) {
   const calls = [];
   t.mock.method(globalThis, "fetch", (_url, options) => {
     const input = JSON.parse(options.body);
+    if (input.action.startsWith("lease-")) return Promise.resolve(Response.json(leaseReply(input)));
     calls.push(input);
     return Promise.resolve(respond(input)).then((value) => value instanceof Response ? value : Response.json(value));
   });
@@ -83,6 +87,7 @@ test("清除严格确认完整名称，提交后输入变化也不能重复发�
   await input.dispatch("input");
   assert.equal(submit.disabled, false);
   const saving = view.form.dispatch("submit");
+  await settled();
   input.value = "资料";
   await input.dispatch("input");
   input.value = "资料包";
@@ -127,6 +132,7 @@ test("晚到预览不替换后来对话框，晚到提交只回报原cap并保�
   confirmation(current).value = "当前cap";
   await confirmation(current).dispatch("input");
   const submitting = current.form.dispatch("submit");
+  await settled();
   await manager.open("delete", { name: "后来cap" });
   const result = { id: "current-delete", name: "当前cap", type: "delete", status: "pending" };
   firstDelete(result);

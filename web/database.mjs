@@ -3,17 +3,21 @@ import { button, node, replace, shortCommit } from "./dom.mjs";
 import { createDataGrid } from "./data-grid.mjs";
 import { createDraft, draftKey, editCell, editableCell } from "./database-drafts.mjs";
 import { saveErrorPresentation, saveErrorRecord } from "./save-errors.mjs";
+import { canEdit } from "./permissions.mjs";
+import { editLease, leaseMessage } from "./edit-lease.mjs";
 
 export class DatabaseView {
-  constructor(container, cap, { isCurrent, onError, table, drafts = new Map(), onDirty, onSaved, onTableSelected }) {
+  constructor(container, cap, { isCurrent, onError, table, drafts = new Map(), onDirty, onSaved, onTableSelected, createLease = editLease }) {
     Object.assign(this, { container, cap, isCurrent, onError, drafts, onDirty, onSaved, onTableSelected });
     this.wrapper = node("div", "query-panel");
     this.title = node("span", "database-table-title", "读取数据表…");
     this.note = node("span", "database-note");
+    this.lease = createLease(() => { if (this.isCurrent()) { this.controls(); this.onDirty?.(); } });
+    this.edit = button("编辑表格", () => this.toggleEditing(), "button secondary");
     this.save = button("保存修改", () => this.saveChanges(), "button primary");
     this.discard = button("放弃当前表修改", () => this.discardChanges(), "button ghost");
     this.toolbar = node("div", "query-toolbar");
-    this.toolbar.append(this.title, this.note, this.discard, this.save);
+    this.toolbar.append(this.title, this.note, this.edit, this.discard, this.save);
     this.input = node("textarea", "sql-editor");
     this.input.spellcheck = false;
     this.input.setAttribute("aria-label", "SQLite只读查询");
@@ -30,7 +34,14 @@ export class DatabaseView {
     this.loadTable(table);
   }
   hasDirty() { return Boolean(this.draft?.dirty); }
-  destroy() { this.grid?.destroy(); this.grid = null; }
+  destroy() { this.destroyGrid(); this.lease?.release(); }
+  destroyGrid() { this.grid?.destroy(); this.grid = null; }
+  async toggleEditing() {
+    if (!canEdit(this.cap) || this.busy || !this.record?.editable) return;
+    if (this.lease.proof) this.lease.release();
+    else await this.lease.acquire(this.cap.name, "database");
+    if (this.isCurrent()) { this.controls(); this.onDirty?.(); }
+  }
   finishRequest() {
     this.busy = false;
     if (!this.isCurrent()) return;
@@ -41,17 +52,25 @@ export class DatabaseView {
     if (pending && pending.commit !== this.record?.commit) this.refresh(pending);
   }
   controls() {
-    this.save.disabled = this.busy || this.draft?.saving || !this.hasDirty();
+    this.save.disabled = !canEdit(this.cap) || !this.lease?.proof || this.busy || this.draft?.saving || !this.hasDirty();
+    this.save.hidden = !canEdit(this.cap);
     this.discard.disabled = this.busy || this.draft?.saving || !this.hasDirty();
+    if (this.edit) {
+      this.edit.hidden = !canEdit(this.cap) || !this.record?.editable;
+      this.edit.disabled = Boolean(this.busy || this.draft?.saving || this.lease?.state.status === "acquiring");
+      this.edit.textContent = this.lease?.proof ? "结束编辑" : "占用并编辑表格";
+    }
     this.execute.disabled = Boolean(this.busy);
     this.note.textContent = this.hasDirty()
       ? `${this.draft.saving ? "正在保存" : `${this.draft.changes.size} 行未保存`} · 基于 ${shortCommit(this.draft.record.commit)}${this.remote ? " · 服务端已有新版本" : ""}`
-      : this.record ? `${shortCommit(this.record.commit)} · ${this.record.editable ? "可编辑" : "只读"}` : "";
+      : this.record ? `${shortCommit(this.record.commit)} · ${this.lease?.proof ? "编辑占用中" : "只读浏览"}` : "";
+    if (["busy", "lost", "acquiring"].includes(this.lease?.state.status)) this.note.textContent += ` · ${leaseMessage(this.lease.state)}`;
     if (this.hasDirty() && !this.draft.saving && (this.draft.error || this.remote))
       this.note.textContent += ` · ${saveErrorPresentation(this.draft.error, { remote: this.remote }).message}`;
   }
   async loadTable(table, offset = 0) {
     if (this.busy) return;
+    if (this.record && (table !== this.record.table || offset !== this.offset)) this.lease.release();
     this.busy = true;
     this.controls();
     try {
@@ -81,7 +100,7 @@ export class DatabaseView {
     finally { this.finishRequest(); }
   }
   render(record, rows, editing = false) {
-    this.destroy();
+    this.destroyGrid();
     const host = node("div", "database-grid");
     const footer = node("div", "query-pagination");
     const previous = button("上一页", () => editing ? this.page(Math.max(0, this.offset - 50)) : this.query(Math.max(0, this.offset - 50)));
@@ -93,7 +112,7 @@ export class DatabaseView {
     this.grid = createDataGrid(host, {
       columns: record.columns,
       rows,
-      editable: (index, name) => !this.busy && editing && editableCell(this.draft, index, name),
+      editable: (index, name) => canEdit(this.cap) && Boolean(this.lease.proof) && !this.busy && editing && editableCell(this.draft, index, name),
       onEdit: editing ? (index, name, value) => {
         editCell(this.draft, index, name, value);
         this.controls();
@@ -109,6 +128,7 @@ export class DatabaseView {
   async query(offset) {
     if (this.busy) return;
     if (this.hasDirty()) { this.note.textContent = "当前表有未保存修改，请先保存或放弃后查询。"; return; }
+    this.lease.release();
     this.busy = true;
     this.controls();
     const sql = this.input.value;
@@ -126,7 +146,9 @@ export class DatabaseView {
     finally { this.finishRequest(); }
   }
   async saveChanges() {
+    if (!canEdit(this.cap)) return;
     if (this.busy || this.draft?.saving || !this.hasDirty()) return;
+    if (!this.lease?.proof) { this.note.textContent = "请先重新占用编辑；当前表草稿和原版本已保留。"; return; }
     this.busy = true;
     const draft = this.draft;
     draft.saving = true;
@@ -136,7 +158,7 @@ export class DatabaseView {
     let finished;
     draft.completion = new Promise((resolve) => { finished = resolve; });
     try {
-      const saved = await action("table-write", { name: this.cap.name, table: draft.record.table, changes: [...draft.changes.values()], token: draft.record.token });
+      const saved = await action("table-write", { name: this.cap.name, table: draft.record.table, changes: [...draft.changes.values()], token: draft.record.token }, { lease: this.lease.requireProof() });
       draft.dirty = false;
       draft.changes.clear();
       this.drafts.delete(draftKey(this.cap.name, draft.record.table));
@@ -150,6 +172,7 @@ export class DatabaseView {
       this.onError(error);
     } finally {
       draft.saving = false;
+      this.lease.release();
       finished();
       this.finishRequest();
     }
@@ -159,11 +182,13 @@ export class DatabaseView {
     if (this.busy || this.draft?.saving || !this.draft) return;
     this.drafts.delete(draftKey(this.cap.name, this.draft.record.table));
     this.draft = null;
+    this.lease.release();
     this.onDirty?.();
     this.loadTable(this.table, this.offset);
   }
   refresh(cap) {
     this.cap = cap;
+    if (!canEdit(cap)) this.lease.release();
     if (this.busy) { this.pendingRefresh = cap; return; }
     if (this.hasDirty()) { this.remote = cap.token !== this.draft.record.token; this.controls(); }
     else if (this.mode === "query") {

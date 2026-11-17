@@ -22,6 +22,10 @@ test("Office会话由共享客户端校验token、ID及固定编辑器来源", a
   } };
   await assert.rejects(openOfficeSession(api, { name: "原件.docx", token: "old" }), { status: 409 });
   assert.deepEqual(calls[0], ["/api/office/sessions", "POST", { name: "原件.docx", entry: undefined, token: "old" }]);
+  api.json = async (...args) => { calls.push(args); return { editorUrl: "https://docs.example", config: {} }; };
+  await openOfficeSession(api, { name: "原件.docx", token: "old", mode: "view" });
+  assert.equal(calls.at(-1)[2].mode, "view");
+  await assert.rejects(openOfficeSession(api, { name: "原件.docx", token: "old", mode: "unsafe" }), /mode|模式/);
 });
 
 test("Office桥接固定源CSP、会话校验与恢复下载沿用已有读取保护", async (t) => {

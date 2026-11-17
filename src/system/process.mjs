@@ -34,9 +34,9 @@ export function execute(command, args, options = {}) {
         return reject(new Error("命令输出超过限制，进程已停止"));
       if (result.exitCode && options.check !== false) {
         reject(
-          new Error(
+          Object.assign(new Error(
             `${command} 执行失败（${result.exitCode}）：${result.stderr.trim()}`,
-          ),
+          ), { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, signal: result.signal }),
         );
         return;
       }
@@ -46,7 +46,12 @@ export function execute(command, args, options = {}) {
 }
 
 export async function git(args, cwd) {
-  const result = await execute("git", args, {
+  // Only this process may mutate a managed repository while its capsule/cache lock is held.
+  // Detached auto-maintenance would outlive fetch and race the following full integrity check.
+  const result = await execute("git", [
+    "-c", "maintenance.auto=false", "-c", "maintenance.autoDetach=false",
+    "-c", "gc.auto=0", "-c", "gc.autoDetach=false", ...args,
+  ], {
     cwd,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
   });

@@ -230,10 +230,10 @@ test("提示区分会话、脏更改、队列与Office，截断和未知状态�
 
 test("Workspace按实际视图注册，活动更新不调用load或重建Office", () => {
   const calls = [];
-  const office = { hasDirty: () => true };
+  const office = { hasDirty: () => true, lease: { proof: "held" } };
   const workspace = Object.assign(Object.create(Workspace.prototype), {
     cap: { name: "知识", kind: "files" }, mode: "content", entry: "正文.md", detailsMode: false,
-    editingContent: { name: "知识", entry: "正文.md", details: false }, editor: { hasDirty: () => true },
+    editingContent: { name: "知识", entry: "正文.md", details: false }, editor: { hasDirty: () => true, lease: { proof: "held" } },
     activity: { setTarget: (target) => calls.push(target) },
     load() { assert.fail("活动提示不能重建内容"); },
   });
@@ -248,15 +248,23 @@ test("Workspace按实际视图注册，活动更新不调用load或重建Office"
   assert.equal(workspace.office, office);
   workspace.office = null;
   workspace.mode = "database";
-  workspace.database = { record: { editable: true }, hasDirty: () => false };
+  workspace.database = { record: { editable: true }, hasDirty: () => false, lease: { proof: "held" } };
   workspace.updateActivity();
   assert.equal(calls.at(-1).scope, "database");
-  workspace.database.record.editable = false;
+  workspace.database.lease.proof = undefined;
   workspace.updateActivity();
   assert.equal(calls.at(-1).scope, undefined);
   workspace.mode = "history";
   workspace.updateActivity();
   assert.equal(calls.at(-1).scope, undefined);
+});
+
+test("浏览活动显示服务端租约实际占用人、范围与到期，不增加独立栏", () => {
+  const presentation = activityPresentation({ known: true, data: snapshot("说明", { leases: [{
+    id: "lease-id", scope: "content", owner: { id: "employee", name: "王同事" }, expiresAt: "2030-01-01T00:00:20.000Z",
+  }] }) });
+  assert.match(presentation.label, /王同事正在编辑/);
+  assert.ok(presentation.detail.some((text) => text.includes("王同事") && text.includes("正文") && text.includes("占用到")));
 });
 
 test("正文后台读取期间新增草稿仍保留编辑presence与原上下文", async (t) => {
@@ -268,7 +276,7 @@ test("正文后台读取期间新增草稿仍保留编辑presence与原上下文
     cap: { name: "正文.txt", kind: "text", commit: "old" }, selection: 1, viewRequest: 0,
     mode: "content", detailsMode: false, editingContent: context,
     activity: { setTarget: (target) => targets.push(target) },
-    editor: { hasDirty: () => dirty, markRemote() { marked = true; workspace.updateActivity(); } },
+    editor: { hasDirty: () => dirty, lease: { proof: "held" }, markRemote() { marked = true; workspace.updateActivity(); } },
     onError(error) { throw error; },
   });
   const pending = workspace.load({ background: true });

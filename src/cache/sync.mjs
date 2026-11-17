@@ -51,7 +51,10 @@ async function verifyVersion(repository, commit) {
   if (await git(["rev-parse", "--verify", commit + "^{commit}"], repository) !== commit)
     throw new Error("缓存对象与服务端提交号不一致");
   try { await git(["fsck", "--full", "--no-reflogs", "--no-dangling", commit], repository); }
-  catch (cause) { throw new Error("缓存Git对象缺失或损坏，已停止同步，请核对本机缓存", { cause }); }
+  catch (cause) {
+    const output = typeof cause.stdout === "string" ? cause.stdout.trim().slice(0, 2048) : "";
+    throw new Error(`缓存Git对象缺失或损坏，或完整性检查未能完成，已停止同步，请核对本机缓存：${cause.message}${output ? "\n" + output : ""}`, { cause });
+  }
 }
 
 async function hasCommit(repository, commit) {

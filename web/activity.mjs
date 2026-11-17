@@ -14,6 +14,9 @@ function activityRecord(value, name) {
       !count(value.editorCount) || !count(value.eventCount) || typeof value.eventsTruncated !== "boolean" ||
       typeof value.office?.active !== "boolean" || typeof value.office?.saving !== "boolean" || !count(value.ttlSeconds) || value.ttlSeconds === 0 ||
       (value.editorsTruncated !== undefined && typeof value.editorsTruncated !== "boolean") ||
+      (value.leases !== undefined && (!Array.isArray(value.leases) || value.leases.some((item) => !item || typeof item.id !== "string" ||
+        !Object.hasOwn(scopes, item.scope) || typeof item.owner?.id !== "string" || typeof item.owner?.name !== "string" ||
+        typeof item.expiresAt !== "string" || !Number.isFinite(Date.parse(item.expiresAt))))) ||
       (value.queue !== undefined && (!value.queue || !["closed", "starting", "running", "idle"].includes(value.queue.state) ||
         typeof value.queue.blocked !== "boolean" || !Array.isArray(value.queue.errors) || value.queue.errors.some((item) => !failure(item)) ||
         (value.queue.error !== undefined && !failure(value.queue.error)))) ||
@@ -26,8 +29,15 @@ function activityRecord(value, name) {
 // Each panel owns its sessions; a late release must never remove a later selection's presence.
 export class ActivitySession {
   constructor({ onChange = () => {}, request = action, schedule = setTimeout, cancel = clearTimeout,
-    now = Date.now, createId = () => crypto.randomUUID(), ownerId = tabClientId(), heartbeatMs = 10000, dirtyDelayMs = 500, requestTimeoutMs = 8000 } = {}) {
-    Object.assign(this, { onChange, request, schedule, cancel, now, createId, ownerId, heartbeatMs, dirtyDelayMs, requestTimeoutMs });
+    now = Date.now, createId = () => crypto.randomUUID(), ownerId = tabClientId(), heartbeatMs = 10000, dirtyDelayMs = 500, requestTimeoutMs = 8000,
+    document: page = globalThis.document } = {}) {
+    Object.assign(this, { onChange, request, schedule, cancel, now, createId, ownerId, heartbeatMs, dirtyDelayMs, requestTimeoutMs, page });
+    this.onVisibility = () => {
+      if (!this.target || this.target.scope) return;
+      this.cancel(this.timer);
+      if (!this.page.hidden) void this.refresh();
+    };
+    this.page?.addEventListener?.("visibilitychange", this.onVisibility);
     this.onPageHide = (event) => {
       this.suspended = event.persisted && this.target ? { name: this.target.name, scope: this.target.scope, entry: this.target.entry, dirty: this.target.dirty } : null;
       this.clear();
@@ -63,6 +73,7 @@ export class ActivitySession {
   }
   queue(target, milliseconds) {
     this.cancel(this.timer);
+    if (this.page?.hidden && !target.scope) return;
     this.timer = this.schedule(() => { if (this.target === target) void this.refresh(); }, milliseconds);
     this.timer?.unref?.();
   }
@@ -80,7 +91,7 @@ export class ActivitySession {
   }
   async refresh() {
     const target = this.target;
-    if (!target || target.inflight) return;
+    if (!target || target.inflight || this.page?.hidden && !target.scope) return;
     this.cancel(this.timer);
     target.due = undefined;
     try {
@@ -118,11 +129,12 @@ export class ActivitySession {
     this.suspended = null;
     globalThis.window?.removeEventListener?.("pagehide", this.onPageHide);
     globalThis.window?.removeEventListener?.("pageshow", this.onPageShow);
+    this.page?.removeEventListener?.("visibilitychange", this.onVisibility);
   }
 }
 
 export function activityPresentation(state) {
-  const detail = ["占用提示不锁定胶囊，保存仍核对原版本；编辑会话数不是人数。"];
+  const detail = ["编辑占用会阻止其他写入，保存仍核对原版本；活动会话数不是人数。"];
   if (!state) return { label: "", detail };
   if (!state.known) return {
     label: state.checking ? "正在查询占用" : "占用状态未知", unknown: true,
@@ -130,6 +142,11 @@ export function activityPresentation(state) {
   };
   const value = state.data;
   const labels = [];
+  if (value.leases?.length) {
+    const owners = [...new Set(value.leases.map((item) => item.owner.name))];
+    labels.push(`${owners.slice(0, 2).join("、")}${owners.length > 2 ? "等" : ""}正在编辑`);
+    for (const lease of value.leases) detail.push(`${lease.owner.name} · ${scopes[lease.scope]} · 占用到 ${new Date(lease.expiresAt).toLocaleTimeString("zh-CN", { hour12: false })}`);
+  }
   const queueErrors = [...(value.queue?.errors || []), ...(value.queue?.error ? [value.queue.error] : [])];
   const lockWait = value.queue?.blocked && queueErrors.length > 0 && queueErrors.every((error) => error.code === "LOCK_BUSY");
   if (value.queue?.blocked) labels.push(lockWait ? "等待占用释放" : value.queue.errors.length ? "事件待恢复" : "队列异常");

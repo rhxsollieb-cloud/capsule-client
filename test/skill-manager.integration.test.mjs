@@ -127,6 +127,28 @@ test("本机受管work被修改时拒绝启动且保留原文件与注册", {
   } finally { await manager.close(); }
 });
 
+test("共享home的两个客户端竞争启动同一Skill，只有一个UI并在关闭后迅速释放生命周期锁", {
+  skip: missingServer, timeout: 60000,
+}, async (t) => {
+  const { api, config, manager, cap } = await skillFixture(t);
+  const second = new SkillManager(api);
+  try {
+    const results = await Promise.allSettled([manager.start(cap.name), second.start(cap.name)]);
+    assert.equal(results.filter((item) => item.status === "fulfilled").length, 1);
+    const refusal = results.find((item) => item.status === "rejected").reason;
+    assert.ok(["SKILL_BUSY", "SKILL_SESSION_UNKNOWN"].includes(refusal.code));
+    const winner = results[0].status === "fulfilled" ? manager : second;
+    const other = winner === manager ? second : manager;
+    const session = winner.sessions.get(cap.name);
+    assert.equal((await readRegistration(config, cap.name)).lastSession.id, session.id);
+    await winner.stop(cap.name);
+    await unreachable(session.url);
+    const restarted = await other.start(cap.name);
+    assert.equal(restarted.state, "running");
+    assert.notEqual(restarted.session.id, session.id);
+  } finally { await Promise.all([manager.close(), second.close()]); }
+});
+
 
 test("snapshot与work同时被修改不能冒充已登记提交", {
   skip: missingServer, timeout: 30000,

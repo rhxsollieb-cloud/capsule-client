@@ -11,6 +11,10 @@ import { overview, searchCapsules, whereCapsule } from "../operations/discovery.
 import { inspectOrganization, organizationReceipt, organizeMounts } from "../operations/organization.mjs";
 import { editText } from "../operations/content.mjs";
 import { heartbeatActivity, readActivity, releaseActivity } from "../operations/activity.mjs";
+import { adminFields, adminOperation } from "../operations/admin.mjs";
+import { leasedApi, leaseOperation } from "../operations/leases.mjs";
+
+const protectedActions = new Set(["save-details", "office-open", "office-save", "office-write", "table-write", "save", "edit", "update", "write", "delete", "revert", "convert-skill"]);
 
 const allowed = {
   health: [],
@@ -32,7 +36,7 @@ const allowed = {
   "save-details": ["name", "body", "description", "token"],
   preview: ["name", "entry"],
   "office-status": [],
-  "office-open": ["name", "entry", "token"],
+  "office-open": ["name", "entry", "token", "mode"],
   "office-session": ["id"],
   "office-save": ["id"],
   "office-write": ["name", "entry", "changes", "token"],
@@ -76,7 +80,12 @@ function validatedPath(value, validator) {
   }
 }
 
-export async function performAction(api, input, { skills } = {}) {
+export async function performAction(api, input, { skills, lease } = {}) {
+  if (typeof input.action === "string" && ["lease-status", "lease-acquire", "lease-renew", "lease-release"].includes(input.action))
+    return leaseOperation(api, input.action, { ...Object.fromEntries(Object.entries(input).filter(([key]) => key !== "action")), ...(["lease-renew", "lease-release"].includes(input.action) && lease ? { lease } : {}) });
+  if (protectedActions.has(input.action) && !(input.action === "office-open" && input.mode === "view")) api = leasedApi(api, lease);
+  if (typeof input.action === "string" && Object.hasOwn(adminFields, input.action))
+    return adminOperation(api, input.action, Object.fromEntries(Object.entries(input).filter(([key]) => key !== "action")));
   if (typeof input.action !== "string" || !Object.hasOwn(allowed, input.action))
     throw uiError("未知客户端操作");
   const fields = allowed[input.action];

@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 import { capsuleName, entryPath } from "../system/paths.mjs";
 import { limits, previewError } from "../preview/limits.mjs";
+import { revalidatedContent } from "../cache/content.mjs";
 
 async function contentBuffer(response) {
   const declared = response.headers.get("Content-Length");
@@ -37,9 +38,15 @@ export async function readOfficeSource(api, name, entry, token) {
   if (!kind) throw previewError("当前办公操作支持 .docx 和 .xlsx，请下载原件查看其他格式", 415);
   const record = await api.json(api.path(name));
   if (token !== undefined && record.token !== token) throw previewError("版本冲突，请先重读当前原件", 409);
-  const source = await api.response(api.path(name, "content", { entry }));
+  const { response: source } = await revalidatedContent(api, name, entry, { maxBytes: limits.fileBytes });
+  const sourceCommit = source.headers.get("X-Capsule-Commit");
+  const sourceToken = source.headers.get("X-Capsule-Token");
+  if (sourceCommit && sourceCommit !== record.commit || sourceToken && record.token !== undefined && sourceToken !== record.token) {
+    await source.body?.cancel();
+    throw previewError("读取期间版本已变化，请刷新后重试", 409);
+  }
   const buffer = await contentBuffer(source);
   const after = await api.json(api.path(name));
-  if (record.commit !== after.commit) throw previewError("读取期间版本已变化，请刷新后重试", 409);
+  if (record.commit !== after.commit || record.token !== undefined && record.token !== after.token) throw previewError("读取期间版本已变化，请刷新后重试", 409);
   return { name, entry, kind, buffer, record };
 }

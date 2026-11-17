@@ -74,6 +74,32 @@ test("历史commit复用现有Git对象，不重复下载，并固定引用防�
   assert.equal((await cachedVersion(api.config, "工具", first.commit)).commit, first.commit);
 });
 
+test("同步即使仓库配置强制自动GC也不会启动脱锁后台维护，完整pack和历史仍通过fsck", async (t) => {
+  const { api, directory, update } = await repositoryFixture(t, "first\n");
+  const first = await synchronize(api, "工具");
+  const packs = join(first.repository, ".git", "objects", "pack");
+  const originalPacks = (await readdir(packs)).filter((name) => name.endsWith(".pack"));
+  for (const [key, value] of [["maintenance.auto", "true"], ["maintenance.autoDetach", "true"], ["gc.auto", "1"], ["gc.autoPackLimit", "1"], ["gc.autoDetach", "true"]])
+    await git(["config", key, value], first.repository);
+  const trace = join(directory, "git-maintenance.jsonl");
+  const previous = process.env.GIT_TRACE2_EVENT;
+  process.env.GIT_TRACE2_EVENT = trace;
+  let latest;
+  try {
+    latest = await update("second\n");
+    await synchronize(api, "工具");
+  } finally {
+    if (previous === undefined) delete process.env.GIT_TRACE2_EVENT;
+    else process.env.GIT_TRACE2_EVENT = previous;
+  }
+  const events = (await readFile(trace, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(events.some((event) => event.event === "child_start" && event.argv?.some((value) => ["maintenance", "gc", "repack"].includes(value))), false);
+  const retained = (await readdir(packs)).filter((name) => name.endsWith(".pack"));
+  assert.ok(originalPacks.every((name) => retained.includes(name)));
+  assert.ok(retained.length > originalPacks.length, "完整bundle应保留新旧pack，不能靠重排或忽略历史绕过校验");
+  await git(["fsck", "--full", "--no-reflogs", "--no-dangling", first.commit, latest], first.repository);
+});
+
 test("本地缓存即使提交后Git状态干净，未知本地HEAD也不会被同步覆盖", async (t) => {
   const { api } = await repositoryFixture(t, "server\n");
   const cached = await synchronize(api, "工具");
@@ -285,7 +311,13 @@ test("错误commit的bundle被拒绝，缺少子blob的本地提交明确损坏�
   const blob = await git(["rev-parse", "HEAD:main.mjs"], cached.repository);
   const missing = join(objects, blob.slice(0, 2), blob.slice(2));
   await rm(missing);
-  await assert.rejects(synchronize(api, "工具"), /Git对象缺失或损坏/);
+  await assert.rejects(synchronize(api, "工具"), (error) => {
+    assert.match(error.message, /Git对象缺失或损坏/);
+    assert.match(error.message, /git 执行失败/);
+    assert.notEqual(error.cause.exitCode, 0);
+    assert.equal(typeof error.cause.stdout, "string");
+    return true;
+  });
   assert.equal(downloads, 1);
   assert.equal(existsSync(missing), false);
   assert.equal(await readFile(join(cached.repository, "main.mjs"), "utf8"), "new\n");

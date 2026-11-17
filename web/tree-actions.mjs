@@ -1,6 +1,7 @@
 import { button } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 import { ActionMenu } from "./menu.mjs";
+import { canEdit } from "./permissions.mjs";
 
 export class TreeActions {
   constructor(element, { onManage, onError }) {
@@ -12,9 +13,9 @@ export class TreeActions {
     return [
       { label: "属性", icon: "info", action: () => this.onManage("properties", item) },
       { separator: true },
-      { label: "断开当前挂载…", disabled: !item.path, action: () => this.onManage("unlink", item) },
+      { label: "断开当前挂载…", disabled: !item.path || !canEdit(item), action: () => this.onManage("unlink", item) },
       { separator: true },
-      { label: "清除整个 cap…", danger: true, action: () => this.onManage("delete", item) },
+      { label: "清除整个 cap…", danger: true, disabled: !canEdit(item), action: () => this.onManage("delete", item) },
     ];
   }
   bind(row, item, mounted) {

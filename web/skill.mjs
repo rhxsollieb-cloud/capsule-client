@@ -1,6 +1,8 @@
 import { action, readText } from "./api.mjs";
 import { node, replace, shortCommit } from "./dom.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { canEdit } from "./permissions.mjs";
+import { withEditLease } from "./edit-lease.mjs";
 
 const states = { unregistered: "尚未注册到本机", registered: "已注册 · 未启动", starting: "正在启动", running: "协作页面运行中", stopping: "正在关闭", stopped: "协作页面已关闭", failed: "协作页面启动失败", unknown: "上次会话待核对" };
 
@@ -80,7 +82,7 @@ export class SkillView {
       (running || status?.state === "unknown") && { label: status.state === "unknown" ? "核对旧会话" : "关闭协作页面", icon: "close", disabled: busy, action: current(() => this.perform("skill-stop")) },
       { label: "运行 Skill CLI", icon: "terminal", disabled: busy, action: current(() => this.onRun(this.cap)) },
       { label: "查看 SKILL.md", icon: "text", action: current(() => this.onOpenEntry("SKILL.md"), true) },
-      status?.needsConversion && { label: "转换为 Skill", icon: "code", disabled: busy, action: current(() => this.perform("convert-skill")) },
+      status?.needsConversion && { label: "转换为 Skill", icon: "code", disabled: busy || !canEdit(this.cap), action: current(() => this.perform("convert-skill")) },
       status?.cli && {
         label: "CLI 与本机状态", icon: "info",
         information: { title: "独立 CLI 与本机状态", values: [
@@ -116,6 +118,7 @@ export class SkillView {
   }
   async perform(operation) {
     if (this.busy || !this.active()) return;
+    if (operation === "convert-skill" && !canEdit(this.cap)) { this.message("当前身份没有该 cap 的修改权限", true); return; }
     this.request++;
     this.refreshing = false;
     this.refreshRequest = null;
@@ -123,7 +126,8 @@ export class SkillView {
     this.operation = operation;
     this.notifyControls();
     try {
-      const result = await action(operation, { name: this.cap.name, ...(operation === "convert-skill" ? { token: this.cap.token } : {}) });
+      const fields = { name: this.cap.name, ...(operation === "convert-skill" ? { token: this.cap.token } : {}) };
+      const result = operation === "convert-skill" ? await withEditLease(this.cap.name, "content", (lease) => action(operation, fields, { lease })) : await action(operation, fields);
       if (operation === "convert-skill") this.onSaved(result);
       else if (this.active()) this.render(result);
     } catch (error) { if (this.active()) { this.message(error.message, true); this.onError(error); } }

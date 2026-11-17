@@ -61,7 +61,9 @@ writeSync(Number(process.env.CAPSULE_SKILL_READY_FD), JSON.stringify({ url: 'htt
 
 URL必须使用127.0.0.1或localhost、HTTP和明确端口，不能含用户名密码。就绪回执独立于stdout/stderr；15秒内没有回执、返回远端地址、页面不可访问或进程提前退出会停止本次启动并给出诊断。启动登记写入失败同样停止已创建的进程，保留原始错误及清理诊断。普通日志有界保留在本机登记记录。
 
-run与UI启动器通过同一环境构造继承宿主环境，再移除CAPSULE_TOKEN和CAPSULE_ONLYOFFICE_JWT_SECRET；这不是环境白名单，也不会移除其他任意密钥。run只主动设置CAPSULE_SKILL_STATE；UI启动器还设置NAME、COMMIT和READY_FD。CLI中的后三项可能缺失，也可能继承宿主旧值，不能作为当前运行身份；实际cap与commit以run回执为准。直接调用登记CLI不经过这层过滤。
+run与UI启动器通过同一环境构造继承宿主环境，再移除CAPSULE_TOKEN、CAPSULE_LEASE_TOKEN和CAPSULE_ONLYOFFICE_JWT_SECRET；这不是环境白名单，也不会移除其他任意密钥。run只主动设置CAPSULE_SKILL_STATE；UI启动器还设置NAME、COMMIT和READY_FD。CLI中的后三项可能缺失，也可能继承宿主旧值，不能作为当前运行身份；实际cap与commit以run回执为准。直接调用登记CLI不经过这层过滤。
+
+同一服务端/cap的注册、启动和停止使用跨进程生命周期短锁，不同本机端口共享home也不能并发双启或覆盖lastSession；已运行页面不持续占锁。CAPSULE_SKILL_STATE为Skill自行管理的业务状态，多次CLI与协作页面并行读写须使用SQLite事务或细粒度原子协议，客户端不替任意Skill锁住整个state，详见[并发说明](../../capsule-server/docs/concurrency.md)。
 
 中央区域只在需要协作且页面已启动时嵌入其本机URL。启动与关闭显式操作；切换知识节点只卸载浏览器frame，不终止后台Skill。正常关闭客户端会关闭自己启动的UI进程组。Skill页面拥有独立来源与自身前端策略，主工作台只额外允许回环HTTP frame，Office脚本来源与工作台自身脚本限制不变。
 

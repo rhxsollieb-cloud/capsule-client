@@ -10,6 +10,7 @@ import { staticFile } from "./static.mjs";
 import { sendMedia, uploadMedia } from "./media.mjs";
 import { officeContentPolicy, sendOfficeRecovery } from "./office.mjs";
 import { SkillManager } from "../skills/manager.mjs";
+import { sendBackupContent } from "./admin.mjs";
 
 export function createUiApplication({
   config,
@@ -36,7 +37,7 @@ export function createUiApplication({
       if (url.pathname === "/ui/action") {
         if (request.method !== "POST") throw uiError("该接口需要POST", 405);
         checkSession(request, csrfToken);
-        return json(response, 200, await performAction(api, await requestJson(request), { skills }));
+        return json(response, 200, await performAction(api, await requestJson(request), { skills, lease: request.headers["x-capsule-lease"] }));
       }
       if (url.pathname === "/ui/upload") {
         if (request.method !== "PUT") throw uiError("该接口需要PUT", 405);
@@ -44,12 +45,16 @@ export function createUiApplication({
         return json(response, 200, await uploadMedia(request, url, api, maxUploadBytes));
       }
       if (url.pathname === "/ui/content") {
-        if (request.method !== "GET") throw uiError("该接口需要GET", 405);
+        if (!["GET", "HEAD"].includes(request.method)) throw uiError("该接口需要GET或HEAD", 405);
         return await sendMedia(request, response, url, api);
       }
       if (url.pathname === "/ui/office/recovery") {
         if (request.method !== "GET") throw uiError("该接口需要GET", 405);
         return await sendOfficeRecovery(response, url, api);
+      }
+      if (url.pathname === "/ui/admin/backup-content") {
+        if (request.method !== "GET") throw uiError("该接口需要GET", 405);
+        return await sendBackupContent(response, url, api);
       }
       if (url.pathname.startsWith("/ui/")) throw uiError("接口不存在", 404);
       if (!["GET", "HEAD"].includes(request.method)) throw uiError("静态文件只接受读取", 405);

@@ -16,6 +16,7 @@ export function configuration(env = process.env) {
     clientUrl: localClientOrigin(env.CAPSULE_CLIENT_URL || `http://127.0.0.1:${env.CAPSULE_UI_PORT || 5183}`),
     officeEditorUrl: officeOrigin(env.CAPSULE_ONLYOFFICE_URL || "http://127.0.0.1:8081"),
     token: env.CAPSULE_TOKEN || "",
+    leaseToken: env.CAPSULE_LEASE_TOKEN || "",
     home: resolve(
       env.CAPSULE_CLIENT_HOME ||
         fileURLToPath(new URL("../.local", import.meta.url)),

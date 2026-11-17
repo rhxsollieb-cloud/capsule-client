@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Inspector } from "../web/inspector.mjs";
 import { InspectorDetails } from "../web/inspector-details.mjs";
+import { testLease } from "./leaseFixture.mjs";
 
 function fixture(t, respond, options = {}) {
   const previous = globalThis.document;
@@ -27,6 +28,7 @@ function fixture(t, respond, options = {}) {
       close() { this.open = false; closes.push(() => this.dispatch("close")); },
       pause() { this.pauses = (this.pauses || 0) + 1; },
       load() { this.loads = (this.loads || 0) + 1; },
+      focus() {},
     };
     element.classList = {
       contains: (name) => element.className.split(/\s+/).includes(name),
@@ -63,6 +65,7 @@ function fixture(t, respond, options = {}) {
   });
   const activityTargets = [];
   const inspector = new Inspector({ onSaved: (record) => saved.push(record), onEdit: (source) => edits.push(source), onError: (error) => errors.push(error),
+    createLease: (onChange) => testLease(onChange, { held: false }),
     createActivity: () => ({ setTarget: (value) => activityTargets.push(value), clear: () => activityTargets.push(null) }), ...options });
   return { inspector, calls, saved, edits, errors, renders, activityTargets, flushCloses: async () => { for (const close of closes.splice(0)) await close(); } };
 }
@@ -90,6 +93,8 @@ test("属性活动绑定弹窗cap与dirty，关闭释放且不使用中央选择
   const { inspector, activityTargets } = fixture(t, (input) => record(input.name));
   inspector.show({ name: "中央Office.docx" });
   await inspector.open({ name: "另一个.png" });
+  assert.deepEqual(activityTargets.at(-1), { name: "另一个.png", scope: undefined, dirty: false });
+  await inspector.startEditing();
   assert.deepEqual(activityTargets.at(-1), { name: "另一个.png", scope: "details", dirty: false });
   inspector.description.value = "属性未保存说明";
   await inspector.description.dispatch("input");
@@ -124,6 +129,7 @@ test("未完整加载的metadata详述不能随简述保存覆盖全文", async 
   const { inspector, calls } = fixture(t, (input) => input.action === "details" ? record(input.name, { nextLine: 81 }) : { name: input.name, token: "saved-token", commit: "saved-commit" });
   await inspector.open({ name: "长说明.png" });
   assert.equal(inspector.draft.bodyReady, false);
+  await inspector.startEditing();
   inspector.description.value = "更新简述";
   await inspector.description.dispatch("input");
   await inspector.save();
@@ -145,6 +151,8 @@ test("保存捕获原简述和详述，继续输入与切换弹窗都保留正�
   inspector.details.input.value = "保存中继续输入";
   await inspector.details.input.dispatch("input");
   await inspector.open({ name: "后来cap.png" });
+  await inspector.startEditing();
+  const laterReservation = inspector.lease.capture();
   accept({ name: "原cap.png", token: "saved-token", commit: "saved-commit" });
   await saving;
   assert.deepEqual(calls[1], { action: "save-details", name: "原cap.png", description: "本次简述", body: "本次详述", token: "原cap.png-token" });
@@ -155,6 +163,8 @@ test("保存捕获原简述和详述，继续输入与切换弹窗都保留正�
   assert.equal(inspector.current.name, "后来cap.png");
   assert.equal(inspector.description.value, "简述");
   assert.equal(saved[0].name, "原cap.png");
+  assert.equal(inspector.lease.proof, "test-edit-proof");
+  assert.equal(inspector.lease.capture(), laterReservation);
 });
 
 test("正文预览使用现有草稿，放弃草稿后恢复原正文", (t) => {

@@ -27,16 +27,25 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
     return args.command === "run" ? result.exitCode || (result.logError ? 1 : 0) : 0;
   } catch (error) {
     const token = config?.token || (typeof env.CAPSULE_TOKEN === "string" ? env.CAPSULE_TOKEN : undefined);
+    const leaseIndex = cliArgs.findIndex((value) => value === "--lease" || value.startsWith("--lease="));
+    const leaseToken = args?.values?.lease || config?.leaseToken || env.CAPSULE_LEASE_TOKEN ||
+      (leaseIndex < 0 ? undefined : cliArgs[leaseIndex].startsWith("--lease=") ? cliArgs[leaseIndex].slice(8) : cliArgs[leaseIndex + 1]);
     if (jsonErrors || args?.output?.jsonErrors) {
-      const value = machineError(error, { token, command: args?.command });
+      const value = machineError(error, { token, leaseToken, command: args?.command });
+      if (["user-create", "credential-create", "lease-acquire"].includes(args?.command) && (error.result?.credentialIssued || error.result?.leaseAcquired) && typeof error.result.token === "string") {
+        // Output-file failure must not lose a token that the server will never return again.
+        value.error.message = error.result.leaseAcquired ? "编辑占用已获取，但输出文件未保存。请保存本响应，及时续租或释放。" : "凭据已签发，但输出文件未保存。请立即保存本响应，勿重放签发。";
+        value.result = { token: error.result.token, ...(error.result.leaseAcquired ? { leaseAcquired: true, id: error.result.id } : { credentialIssued: true }), outputFailed: true };
+      }
       io.stdout.write(JSON.stringify(boundedResult(value, args?.output?.maxChars), null, 2) + "\n");
     } else if (error.result) {
-      const { result } = machineError(error, { token });
+      const { result } = machineError(error, { token, leaseToken });
       io.stdout.write(JSON.stringify(boundedResult(result, args?.output?.maxChars), null, 2) + "\n");
     }
-    else if (error.eventId) io.stdout.write(JSON.stringify({ eventId: error.eventId, ...(error.code ? { code: error.code } : {}), status: error.status }, null, 2) + "\n");
+    else if (error.eventId || error.operationId) io.stdout.write(JSON.stringify({ ...(error.eventId ? { eventId: error.eventId } : {}), ...(error.operationId ? { operationId: error.operationId } : {}), ...(error.code ? { code: error.code } : {}), status: error.status }, null, 2) + "\n");
     let message = String(error.message);
     if (token) message = message.replaceAll(token, "[凭据已隐藏]");
+    if (leaseToken) message = message.replaceAll(leaseToken, "[凭据已隐藏]");
     io.stderr.write(message + "\n");
     return 1;
   }

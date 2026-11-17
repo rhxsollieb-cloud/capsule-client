@@ -10,6 +10,7 @@ import { NativeNavigator } from "./native-navigation.mjs";
 import { DocumentHeader } from "./document-header.mjs";
 import { SkillView } from "./skill.mjs";
 import { ActivitySession } from "./activity.mjs";
+import { canEdit } from "./permissions.mjs";
 
 export class Workspace {
   constructor({ inspector, onError, onChanged, onCreate, onRun, onUpload, onRevert }) {
@@ -56,6 +57,7 @@ export class Workspace {
     else this.header.update({ name: item.name, kind: item.kind, path: item.name, controls: { state: "loading", statusText: "读取中" }, contextKey: `loading-${this.selection}` });
   }
   removed(name) {
+    if (this.cap?.name === name) this.editor?.close?.();
     for (const drafts of [this.editor.drafts, this.databaseDrafts])
       for (const key of drafts.keys()) if (key.startsWith(`${name}\0`)) drafts.delete(key);
     this.inspector.drafts.delete(name);
@@ -93,6 +95,7 @@ export class Workspace {
   }
   async select(item) {
     if (!await this.leaveOffice()) return false;
+    this.editor?.close?.();
     const selected = ++this.selection;
     this.item = item;
     this.database?.destroy?.();
@@ -147,7 +150,7 @@ export class Workspace {
       { label: "运行 Skill CLI", icon: "play", action: inContext(() => this.onRun(cap, this.hasDirty())) },
     );
     items.push(
-      { label: cap.kind === "markdown" ? "上传附件" : "上传原件", icon: "upload", disabled: Boolean(this.office?.hasDirty()), action: inContext(() => this.onUpload(cap, entry)) },
+      { label: cap.kind === "markdown" ? "上传附件" : "上传原件", icon: "upload", disabled: !canEdit(cap) || Boolean(this.office?.hasDirty()), action: inContext(() => this.onUpload(cap, entry)) },
       { label: "版本历史与回撤", icon: "history", disabled: Boolean(this.office?.state.saving), action: inContext(() => this.showHistory()) },
       { label: "检查更新", icon: "refresh", action: inContext(() => this.refresh(true)) },
     );
@@ -164,21 +167,31 @@ export class Workspace {
   }
   updateActivity() {
     if (!this.activity || !this.cap) return;
+    if (!canEdit(this.cap)) { this.activity.setTarget({ name: this.cap.name }); return; }
     let scope;
     let entry;
     let dirty = false;
-    if (this.mode === "content" && this.office) { scope = "office"; entry = this.entry; dirty = this.office.hasDirty(); }
-    else if (this.mode === "content" && this.editingContent?.name === this.cap.name &&
+    if (this.mode === "content" && this.office?.lease?.proof) { scope = "office"; entry = this.entry; dirty = this.office.hasDirty(); }
+    else if (this.mode === "content" && this.editor?.lease?.proof && this.editingContent?.name === this.cap.name &&
         this.editingContent.entry === this.entry && this.editingContent.details === this.detailsMode) {
       scope = this.detailsMode ? "details" : "content";
       entry = scope === "content" ? this.entry : undefined;
       dirty = this.editor.hasDirty(this.cap.name, this.entry);
-    } else if (this.mode === "database" && this.database?.record?.editable) { scope = "database"; dirty = this.database.hasDirty(); }
+    } else if (this.mode === "database" && this.database?.lease?.proof) { scope = "database"; dirty = this.database.hasDirty(); }
     this.activity.setTarget({ name: this.cap.name, scope, entry, dirty });
+  }
+  permissionsChanged() {
+    if (!this.cap) return;
+    this.editor?.updatePermissions?.(this.cap);
+    this.database?.controls();
+    this.office?.controls();
+    this.skillView?.notifyControls();
+    this.chrome();
   }
   async load({ background = false } = {}) {
     if (!this.cap) return;
     if (this.mode === "skill" && this.skillView && background) { this.skillView.refresh(this.cap); return; }
+    if (!background) this.editor?.close?.();
     const selected = this.selection;
     const request = ++this.viewRequest;
     const cap = this.cap;
@@ -265,7 +278,7 @@ export class Workspace {
         this.editor.markRemote(cap.name, entry);
         return;
       }
-      this.cap = { ...this.cap, description: record.description ?? this.cap.description, runtime: record.runtime, commit: record.commit, token: record.token };
+      this.cap = { ...this.cap, description: record.description ?? this.cap.description, runtime: record.runtime, commit: record.commit, token: record.token, ...(record.permissions ? { permissions: record.permissions } : {}) };
       this.editor.open(this.content, this.cap, entry, { ...record, saveAction: this.detailsMode ? "save-details" : "save" });
       this.editingContent = { name: cap.name, entry, details: this.detailsMode };
       this.inspector.context({ label: /\.md$/i.test(entry || cap.name) ? "正文大纲" : "文件内容", headings: markdownOutline(record.body), values: [`${record.body.split("\n").length} 行 · ${record.body.length.toLocaleString()} 字符`], entry });
@@ -288,7 +301,7 @@ export class Workspace {
     });
   }
   async openDetails(record) {
-    if (this.cap?.name !== record.name || record.source.type !== "content" || !await this.leaveOffice()) return;
+    if (this.cap?.name !== record.name || !canEdit(this.cap) || record.source.type !== "content" || !await this.leaveOffice()) return;
     this.entry = record.kind === "text" ? undefined : record.source.entry;
     this.detailsMode = true;
     this.mode = "content";
@@ -323,6 +336,7 @@ export class Workspace {
     const draft = this.editor.drafts.get(this.editor.key(cap.name, this.entry));
     if (draft?.dirty && draft.baseToken !== cap.token) this.editor.markRemote(cap.name, this.entry);
     this.cap = cap;
+    this.editor?.updatePermissions?.(cap);
     this.inspector.show(cap);
     this.navigation?.update(cap);
     this.office?.refresh(cap);
@@ -341,6 +355,7 @@ export class Workspace {
       if (selected !== this.selection) return;
       const changed = cap.commit !== this.cap.commit;
       this.cap = cap;
+      this.editor?.updatePermissions?.(cap);
       this.inspector.show(cap);
       this.navigation?.update(cap);
       this.chrome();
@@ -355,7 +370,13 @@ export class Workspace {
         return;
       }
       if (changed || force || this.displayedCommit !== cap.commit) await this.load({ background: true });
-    } catch (error) { if (force) this.onError(error); }
+    } catch (error) {
+      if (error.status === 403 && this.cap?.name === name) {
+        this.cap = { ...this.cap, permissions: { read: false, edit: false, manage: false } };
+        this.permissionsChanged();
+      }
+      if (force) this.onError(error);
+    }
     finally { this.refreshing = false; }
   }
 }

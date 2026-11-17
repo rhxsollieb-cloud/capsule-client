@@ -23,3 +23,11 @@ export function saveRegistration(config, record) {
     return record;
   });
 }
+
+// A late exit from an old UI must not replace a newer session's registration.
+export function updateRegistrationSession(config, name, sessionId, session) {
+  return registry(config, (database) => database.prepare(`UPDATE skill_registrations
+    SET record_json=json_set(record_json,'$.lastSession',json(?))
+    WHERE server_url=? AND name=? AND json_extract(record_json,'$.lastSession.id')=?`)
+    .run(JSON.stringify(session), config.serverUrl, name, sessionId));
+}

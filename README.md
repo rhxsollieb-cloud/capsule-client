@@ -18,7 +18,8 @@ npm start -- help
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | CAPSULE_SERVER_URL | http://127.0.0.1:5184 | 服务端地址 |
-| CAPSULE_TOKEN | 空 | 与服务端一致的认证值 |
+| CAPSULE_TOKEN | 空 | 当前员工的个人凭据；维护者也可使用服务端部署管理员凭据 |
+| CAPSULE_LEASE_TOKEN | 空 | Agent当前任务的编辑租约凭证，仅随受保护写入发送，不传给Skill运行环境 |
 | CAPSULE_CLIENT_HOME | 安装目录/.local | 本地缓存、工作目录和运行记录 |
 | CAPSULE_UI_PORT | 5183 | 本地图形服务监听端口，也是默认客户端通道的端口 |
 | CAPSULE_CLIENT_URL | http://127.0.0.1:5183，跟随CAPSULE_UI_PORT | skill-*命令连接的本机HTTP根地址；不改变图形服务监听端口 |
@@ -44,11 +45,33 @@ Markdown目录管理正文与自有附件；Office使用自托管ONLYOFFICE Docs
 
 `npm run ui`先构建本机浏览器依赖，也可单独执行`npm run build:web`。web/vendor/为忽略的生成物，应用依赖不请求CDN。演示数据由独立脚本显式种入，来源、生成方式及重复执行规则见[开发示例](docs/demo-data.md)。
 
+## 员工与管理入口
+
+在知识库cube菜单打开“账户与管理”，查看当前身份；管理员可管理员工、签发或撤销个人凭据、设置当前cap授权、查询审计，以及创建、校验、下载和隔离恢复整库备份。界面和CLI复用src/operations/admin.mjs及服务端统一API，管理资料放服务端顶层SQLite，不写入cap。
+
+```sh
+node src/cli.mjs me
+node src/cli.mjs help admin --json
+node src/cli.mjs users
+node src/cli.mjs grants 公司手册.md
+node src/cli.mjs audit --name 公司手册.md --limit 30
+node src/cli.mjs backup-create --label 上线前备份
+node src/cli.mjs backups
+```
+
+员工分别使用自己的CAPSULE_TOKEN，CLI与图形进程使用同一环境配置。令牌原文仅在签发时返回一次，界面不存入浏览器；管理员部署凭据不分发给普通员工。角色和cap授权共同控制访问，多处挂载不扩大权限，修改登记使用对应revision，正文仍使用原token。
+
+backup-restore必须先预演并核对确认字段，仅在服务端受控恢复区新建隔离库；结果未知用原restoreId查询。恢复库旧个人凭据会撤销、旧Office会话过期，不自动切换活动服务。原目录库丢失时可用backup-register按外存SHA-256认领备份目录后恢复。
+
+初始化、权限和一次性凭据用法见[员工身份与审计](../capsule-server/docs/access.md)，备份覆盖、维护窗口及灾难恢复见[整库备份恢复](../capsule-server/docs/backups.md)。当前是个人令牌认证，企业SSO和网页登录尚未实现。
+
+此管理入口需要配套更新并重启服务端与本机客户端桥接进程；先保存正在编辑的内容。单独刷新网页不会加载Node进程的新接口，me不可用时界面禁用写入并提示核对版本，不退回匿名管理员。
+
 ## Agent入口
 
 Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装短命令后可使用capsule。先查范围，再展开正文；内容修改携当前token，运行代码使用run，回撤使用revert及event查询。名称、虚拟路径和原生entry的区别见[数据规范](docs/data-format.md)。
 
-帮助按capsules/content/database/mounts/versions/office/skills/system分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
+帮助按capsules/content/database/mounts/versions/office/skills/system/admin/leases分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
 
 第一次接触胶囊时，先用`guide`列出说明主题，再用`guide data`了解数据模型、`guide skills`了解胶囊Skill与常规Skill的区别。指南直接按行读取本包维护的[数据规范](docs/data-format.md)和[Skill说明](docs/skills.md)，不联网、不解析连接配置、不初始化工作区。续读使用返回的lines.nextLine，也可用--raw取得所选说明正文；它解释本客户端约定，不代表远端实时协商或某个Skill当前状态。
 
@@ -68,7 +91,11 @@ node src/cli.mjs run 求和工具 -- 2 3
 
 guide读取随包说明；health、stat、search、activity等查询实际服务端。activity只读列出全部未过期编辑会话、事件与Office状态，不发送心跳；会话数不是人数，占用提示不替代版本校验。
 
+实际编辑使用独立的cap租约，浏览不占用，保存、结束编辑或离开立即释放；失联后20秒到期。Agent跨多条命令修改时使用lease-acquire/renew/release，以--lease或CAPSULE_LEASE_TOKEN携证明，仍须保留原正文token。完整用法、Office共享模式及异常磁盘锁处理见[并发说明](../capsule-server/docs/concurrency.md)。
+
 重复同步复用本地完整提交，跨进程等待同一缓存锁；新版本可通过增量bundle减少旧历史和媒体的重复传输。changed表示本地checkout是否切换，不等于是否下载。缓存、注册Skill和独立运行副本各有生命周期；失败、锁异常和SQLite发布边界见[缓存架构](docs/architecture.md#同步与运行)。
+
+CLI get、Office预览和工作台小原件共用有界原件缓存，每次条件重验身份及ETag，未变字节不重复下载；大媒体继续流式Range读取。后台纯查询暂停、未变详述不重取，租约与保存确认继续运行。容量、回收和计数验证见[原件缓存与流量](docs/content-cache.md)。
 
 代码Skill使用SKILL.md和独立CLI，协作页面可选且纯本机运行。skill-register/status/start/stop经本机客户端稳定通道管理，Agent CLI与页面共享本机状态；无需协作时直接run，不启动页面。格式、就绪协议、升级及示例见[Skill说明](docs/skills.md)。
 
@@ -153,6 +180,6 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 ## 当前边界
 
-运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。完整知识库备份/恢复、cap复制/改名和通用跨cap引用尚无CLI，见[覆盖与边界](docs/cli-parity.md)。
+运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。整库备份恢复已有管理员接口，恢复仅生成隔离库；cap复制/改名、通用跨cap引用、自动部署切换和周期备份仍未提供，见[覆盖与边界](docs/cli-parity.md)。
 
 缓存锁异常、未知本地HEAD或脏内容需要先保留并核对；原PID退出不证明孤儿Git已经停止，客户端不自动删锁抢占。处理入口见[同步与运行](docs/architecture.md#同步与运行)。

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { OfficeState } from "../web/office-state.mjs";
 import { OfficeView } from "../web/office.mjs";
+import { testLease } from "./leaseFixture.mjs";
 
 test("编辑器已收集变化不等于cap保存，只有对应回调确认才清除脏状态", () => {
   const state = new OfficeState({ token: "old" });
@@ -54,6 +55,7 @@ test("未知保存响应保留原generation与pending，迟到确认不会抹掉
   const view = Object.create(OfficeView.prototype);
   Object.assign(view, {
     state: new OfficeState({ token: "original" }), session: { id: "test-office-session" },
+    lease: testLease(),
     active: () => true, controls() {}, message() {}, onError() {},
     async poll() {
       this.state.changed(true); this.state.changed(false);

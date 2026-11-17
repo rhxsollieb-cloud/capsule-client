@@ -3,6 +3,7 @@ import test from "node:test";
 import { TextEditor } from "../web/editor.mjs";
 import { Inspector } from "../web/inspector.mjs";
 import { saveErrorPresentation, saveErrorRecord } from "../web/save-errors.mjs";
+import { testLease } from "./leaseFixture.mjs";
 
 const failures = [
   { code: "LOCK_BUSY", label: "内容处理中", text: "查询胶囊活动" },
@@ -59,11 +60,11 @@ test("文本保存失败保留错误码和事件ID，不改变正文基线且标
     response = failure;
     const cap = { name: "正文.txt", token: "old-token", commit: "old-commit" };
     const errors = [];
-    const editor = new TextEditor({ onSaved() { assert.fail("失败不可保存成功"); }, onError: (error) => errors.push(error) });
+    const editor = new TextEditor({ onSaved() { assert.fail("失败不可保存成功"); }, onError: (error) => errors.push(error), createLease: () => testLease() });
     const key = editor.key(cap.name);
     const draft = { body: "未保存正文", original: "原正文", baseToken: cap.token, baseCommit: cap.commit, dirty: true };
     editor.drafts.set(key, draft);
-    editor.current = { key, cap, remote: false, banner: element() };
+    editor.current = { key, cap, remote: false, banner: element(), switchMode() {} };
     await editor.save(cap, undefined, draft);
     const controls = editor.controls(cap.name);
     assert.equal(controls.statusText, failure.label);
@@ -75,7 +76,7 @@ test("文本保存失败保留错误码和事件ID，不改变正文基线且标
     assert.equal(draft.baseToken, "old-token");
     assert.equal(draft.body, "未保存正文");
     assert.equal(draft.dirty, true);
-    assert.equal(controls.canSave, true);
+    assert.equal(controls.canSave, false);
     assert.equal(errors.length, 1);
     assert.equal(calls.at(-1).token, "old-token");
   }
@@ -95,6 +96,7 @@ test("数据表保存错误经过finally及控件刷新仍保留，修改及原t
     const errors = [], activity = [];
     const view = Object.assign(Object.create(DatabaseView.prototype), {
       cap: { name: "记录" }, draft, record, note: {}, save: {}, discard: {}, execute: {},
+      lease: testLease(),
       isCurrent: () => true, onError: (error) => errors.push(error), onDirty: () => activity.push(draft.dirty),
       onSaved() { assert.fail("失败不可保存成功"); }, drafts: new Map([["记录\0notes", draft]]),
     });
@@ -110,7 +112,7 @@ test("数据表保存错误经过finally及控件刷新仍保留，修改及原t
     assert.equal(draft.rows[0].body, "未保存");
     assert.equal(draft.dirty, true);
     assert.equal(draft.saving, false);
-    assert.equal(view.save.disabled, false);
+    assert.equal(view.save.disabled, true);
     assert.equal(errors.length, 1);
     assert.deepEqual(activity, [true]);
   }
@@ -125,6 +127,7 @@ test("属性说明保存保留同一草稿错误与事件，后续输入和活�
     const errors = [], activity = [];
     const inspector = Object.assign(Object.create(Inspector.prototype), {
       current: { name: "图片.png", token: "old-token" }, draft, view: {}, element: { open: true },
+      lease: testLease(), description: {},
       saveButton: {}, note: {}, activity: { setTarget: (target) => activity.push(target) },
       onSaved() { assert.fail("失败不可保存成功"); }, onError: (error) => errors.push(error),
     });
@@ -140,8 +143,8 @@ test("属性说明保存保留同一草稿错误与事件，后续输入和活�
     assert.equal(draft.value, "继续输入");
     assert.equal(draft.dirty, true);
     assert.equal(draft.saving, false);
-    assert.equal(inspector.saveButton.disabled, false);
-    assert.deepEqual(activity.at(-1), { name: "图片.png", scope: "details", dirty: true });
+    assert.equal(inspector.saveButton.disabled, true);
+    assert.deepEqual(activity.at(-1), { name: "图片.png", scope: undefined, dirty: true });
     assert.equal(errors.length, 1);
   }
 });

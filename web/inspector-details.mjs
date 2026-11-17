@@ -1,10 +1,11 @@
 import { action, contentUrl } from "./api.mjs";
 import { button, directoryKinds, node, replace } from "./dom.mjs";
 import { renderMarkdown } from "./markdown.mjs";
+import { canEdit } from "./permissions.mjs";
 
 export class InspectorDetails {
-  constructor({ isCurrent, getDraft, onEdit, onChange, onError }) {
-    Object.assign(this, { isCurrent, getDraft, onEdit, onChange, onError });
+  constructor({ isCurrent, getDraft, onEdit, onChange, onError, requestEdit = async () => true }) {
+    Object.assign(this, { isCurrent, getDraft, onEdit, onChange, onError, requestEdit });
     this.element = node("div", "property-details");
     this.heading = node("div", "property-detail-heading");
     this.body = node("div", "property-body");
@@ -20,8 +21,10 @@ export class InspectorDetails {
   read() {
     this.mode = "read";
     this.input = null;
-    replace(this.heading, node("h3", "", "详述"), button(this.metadata ? "编辑详述" : "编辑正文",
-      () => { if (this.isCurrent()) return this.metadata ? this.loadEditor() : this.onEdit(this.record); }, "button ghost"));
+    this.editButton = button(this.metadata ? "编辑详述" : "编辑正文",
+      () => { if (this.isCurrent() && canEdit(this.record)) return this.metadata ? this.loadEditor() : this.onEdit(this.record); }, "button ghost");
+    this.editButton.disabled = !canEdit(this.record);
+    replace(this.heading, node("h3", "", "详述"), this.editButton);
     replace(this.actions);
     if (this.record.lines.nextLine && !(this.metadata && this.draft.bodyReady))
       this.actions.append(button("加载更多", () => this.more(), "button ghost"));
@@ -54,6 +57,7 @@ export class InspectorDetails {
     }
   }
   edit(body) {
+    if (!canEdit(this.record)) return;
     this.mode = "edit";
     this.draft.bodyReady = true;
     const input = node("textarea", "property-input property-details-input");
@@ -61,6 +65,7 @@ export class InspectorDetails {
     input.rows = 9;
     input.placeholder = "支持 Markdown";
     input.setAttribute("aria-label", "详述");
+    input.readOnly = !this.editing;
     input.addEventListener("input", () => { this.draft.body = input.value; this.onChange(); });
     replace(this.heading, node("h3", "", "详述"), button("阅读", () => { if (this.isCurrent()) this.read(); }, "button ghost"));
     replace(this.element, this.heading, input);
@@ -81,7 +86,9 @@ export class InspectorDetails {
     finally { this.loading = false; }
   }
   async loadEditor() {
+    if (!canEdit(this.record)) return;
     if (this.loading) return;
+    if (!await this.requestEdit() || !this.isCurrent()) return;
     if (this.draft.bodyReady) { this.edit(this.draft.body); return; }
     this.loading = true;
     const record = this.record;
@@ -102,6 +109,12 @@ export class InspectorDetails {
     } catch (error) { if (this.isCurrent()) this.onError(error); }
     finally { this.loading = false; }
   }
+  updatePermissions(record) {
+    if (record.permissions) this.record.permissions = { ...record.permissions };
+    if (this.mode === "read" && this.editButton) this.editButton.disabled = !canEdit(this.record);
+    if (this.input) this.input.readOnly = !canEdit(this.record) || !this.editing;
+  }
+  setEditing(value) { this.editing = value; if (this.input) this.input.readOnly = !value || !canEdit(this.record); }
 }
 
 export function mediaBrowser(cap) {

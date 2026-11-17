@@ -75,7 +75,8 @@ test("单文件便捷读写和历史元数据采用统一接口", async () => {
   await dispatch(parseArguments(["put", "照片.jpg", "./input.jpg", "--token", "version"]), api);
   assert.deepEqual(calls[2], ["照片.jpg", undefined, "./input.jpg", "version"]);
   await dispatch(parseArguments(["get", "照片.jpg", "./output.jpg"]), api);
-  assert.deepEqual(calls[3], [{ name: "照片.jpg", operation: "content", query: { entry: undefined } }, "./output.jpg"]);
+  assert.deepEqual(calls[3].slice(0, 2), [{ name: "照片.jpg", operation: "content", query: { entry: undefined } }, "./output.jpg"]);
+  assert.equal(typeof calls[3][2].openResponse, "function", "原件缓存读取须延迟到下载目标预检之后");
   await dispatch(parseArguments(["update", "代码", "--engine", "node", "--entry", "scripts/cli.mjs", "--description", "新版", "--token", "current"]), api);
   assert.equal(calls[4].method, "PATCH");
   assert.deepEqual(calls[4].body, {

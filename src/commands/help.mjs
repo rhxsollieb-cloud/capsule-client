@@ -1,6 +1,6 @@
 import { commands, commandDefinition, groups, optionDefinitions } from "./catalog.mjs";
 
-const notes = "通用输出：--fields 字段列表；--max-chars 512..200000（默认12000）；--out JSON文件（拒绝覆盖）；--json-errors 输出机器错误。read/details/guide主题正文另支持--raw。\n正文与JSON输入的文件参数接受-，从标准输入有界读取。实体token与位置子树token分别使用；超时先查事件或组织回执，不自动重放。";
+const notes = "通用输出：--fields 字段列表；--max-chars 512..200000（默认12000）；--out JSON文件（拒绝覆盖）；--json-errors 输出机器错误。read/details/guide主题正文另支持--raw。\n正文与JSON输入的文件参数接受-，从标准输入有界读取。实体token与位置子树token分别使用；超时先查事件或组织回执，不自动重放。cap内容写入可用--lease或CAPSULE_LEASE_TOKEN携编辑占用凭证；租约不代替原token，20秒到期、每5秒续租，完成后立即释放。";
 
 function machineCommand(command) {
   return { name: command.name, group: command.group, arity: command.arity, ...(command.offline ? { offline: true } : {}), options: optionDefinitions(command.name), help: command.help };

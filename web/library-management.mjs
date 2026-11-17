@@ -1,11 +1,14 @@
 import { action } from "./api.mjs";
 import { formField, node } from "./dom.mjs";
+import { canEdit } from "./permissions.mjs";
+import { withEditLease } from "./edit-lease.mjs";
 
 export class LibraryManagement {
   constructor({ dialogs, draftState, onUnlinked, onPending }) {
     Object.assign(this, { dialogs, draftState, onUnlinked, onPending });
   }
   async open(operation, item) {
+    if (!canEdit(item)) { this.dialogs.onError(new Error("当前身份没有该 cap 的修改权限")); return; }
     if (operation === "unlink" && !item.path) return;
     const removing = operation === "delete";
     const view = this.dialogs.form(removing ? "清除整个 cap" : "断开当前挂载");
@@ -42,9 +45,9 @@ export class LibraryManagement {
         confirmation.disabled = true;
         view.error.textContent = "";
         try {
-          const result = await action(removing ? "delete" : "unmount", removing
-            ? { name: item.name, token: preview.token, mountsToken: preview.mountsToken }
-            : { path: item.path, token: preview.token });
+          const result = removing ? await withEditLease(item.name, "content", (lease) => action("delete", {
+            name: item.name, token: preview.token, mountsToken: preview.mountsToken,
+          }, { lease })) : await action("unmount", { path: item.path, token: preview.token });
           if (view.form.isConnected) this.dialogs.element.close();
           if (removing) this.onPending(result);
           else await this.onUnlinked(item);

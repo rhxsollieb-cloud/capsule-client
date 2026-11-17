@@ -1,6 +1,8 @@
 import { action, upload } from "./api.mjs";
 import { button, directoryKinds, fileKind, formField, kindLabels, node, replace, shortCommit } from "./dom.mjs";
 import { capsuleEntry } from "./markdown-paths.mjs";
+import { canCreate, canEdit } from "./permissions.mjs";
+import { editLease, leaseMessage, withEditLease } from "./edit-lease.mjs";
 
 export class Dialogs {
   constructor({ onCreated, onError, onRun, onRevert }) {
@@ -22,8 +24,11 @@ export class Dialogs {
   }
   show() { this.element.showModal(); }
   upload(cap, entry, onUploaded) {
+    if (!canEdit(cap)) { this.onError(new Error("当前身份没有该 cap 的修改权限")); return; }
     const markdown = cap.kind === "markdown";
     const view = this.form(markdown ? "上传 Markdown 附件" : "上传原件");
+    const lease = editLease();
+    this.element.addEventListener("close", () => lease.release(), { once: true });
     const file = node("input", "file-input");
     file.type = "file";
     file.required = true;
@@ -50,12 +55,14 @@ export class Dialogs {
       submit.textContent = "正在上传…";
       try {
         if (markdown && !capsuleEntry(path.value)?.startsWith("assets/")) throw new Error("Markdown 附件请保存到 assets/ 内，正文通过编辑器修改。");
-        const saved = await upload(cap.name, directoryKinds.has(cap.kind) ? path.value : undefined, file.files[0], cap.token);
+        if (!await lease.acquire(cap.name, "content")) throw new Error(leaseMessage(lease.state));
+        const saved = await upload(cap.name, directoryKinds.has(cap.kind) ? path.value : undefined, file.files[0], cap.token, { lease: lease.requireProof() });
         this.element.close();
         onUploaded(saved);
       } catch (error) {
         view.error.textContent = error.message;
       } finally {
+        lease.release();
         submit.disabled = false;
         submit.textContent = "上传并保存版本";
       }
@@ -63,6 +70,7 @@ export class Dialogs {
     this.show();
   }
   create(parent = "/") {
+    if (!canCreate()) { this.onError(new Error("当前身份没有创建权限")); return; }
     const view = this.form("新建 cap");
     const name = node("input", "property-input");
     name.required = true;
@@ -135,6 +143,7 @@ export class Dialogs {
     this.show();
   }
   revert(cap, target, hasDraft) {
+    if (!canEdit(cap)) { this.onError(new Error("当前身份没有该 cap 的修改权限")); return; }
     const view = this.form("回撤到此版本");
     view.fields.append(node("strong", "", cap.name), node("div", "mono commit-value", target.commit), node("p", "muted", "内容和属性将恢复到此版本，并生成一个新提交。原有历史会保留。"));
     if (hasDraft) view.fields.append(node("p", "error-message", "当前未保存草稿会继续保留，回撤后需要核对基线。"));
@@ -146,7 +155,7 @@ export class Dialogs {
       if (submit.disabled) return;
       submit.disabled = true;
       try {
-        const result = await action("revert", { name: cap.name, commit: target.commit, token: cap.token });
+        const result = await withEditLease(cap.name, "content", (lease) => action("revert", { name: cap.name, commit: target.commit, token: cap.token }, { lease }));
         this.element.close();
         this.onRevert(result);
       } catch (error) {
@@ -163,6 +172,7 @@ export class Dialogs {
     args.rows = 4;
     args.placeholder = "每行一个参数";
     const logCap = node("input", "property-input");
+    logCap.disabled = !canCreate();
     logCap.placeholder = "留空仅记录到本地数据库";
     view.fields.append(formField("参数（每行一个）", args), formField("日志数据库 cap（可选）", logCap));
     if (hasDraft) view.fields.append(node("p", "error-message", "本次运行服务端已保存版本，当前草稿不会参与运行。"));

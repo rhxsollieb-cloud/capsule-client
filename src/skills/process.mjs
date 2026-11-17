@@ -1,6 +1,7 @@
 import { skillEnvironment } from "./environment.mjs";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { randomUUID } from "node:crypto";
 
 export function localPage(value) {
   let url;
@@ -32,7 +33,7 @@ export function spawnInterface(record, { redact = (value) => value, onExit } = {
     cwd: record.work, env: environment, shell: false,
     detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe", "pipe"],
   });
-  const session = { child, state: "starting", output: "", startedAt: new Date().toISOString() };
+  const session = { id: randomUUID(), child, state: "starting", output: "", startedAt: new Date().toISOString() };
   const output = (chunk) => { session.output = redact((session.output + chunk.toString("utf8")).slice(-16384)); };
   child.stdout.on("data", output);
   child.stderr.on("data", output);

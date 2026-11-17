@@ -3,9 +3,11 @@ import { button, formField, kindLabels, node, replace, shortCommit } from "./dom
 import { InspectorDetails, mediaBrowser } from "./inspector-details.mjs";
 import { ActivityIndicator, ActivitySession } from "./activity.mjs";
 import { saveErrorPresentation, saveErrorRecord } from "./save-errors.mjs";
+import { canEdit } from "./permissions.mjs";
+import { editLease, leaseMessage } from "./edit-lease.mjs";
 
 export class Inspector {
-  constructor({ onSaved, onError, onEdit, getDraft = () => null, createActivity = (options) => new ActivitySession(options) }) {
+  constructor({ onSaved, onError, onEdit, getDraft = () => null, createActivity = (options) => new ActivitySession(options), createLease = editLease }) {
     Object.assign(this, { onSaved, onError, onEdit, getDraft });
     this.drafts = new Map();
     this.request = 0;
@@ -13,9 +15,11 @@ export class Inspector {
     this.element.setAttribute("aria-label", "cap 属性");
     this.activityIndicator = new ActivityIndicator();
     this.activity = createActivity({ onChange: (state) => this.activityIndicator.update(state) });
+    this.lease = createLease(() => { if (this.view && this.current) this.changed(); });
     this.element.addEventListener("close", () => {
       if (this.element.open) return;
       this.activity.clear();
+      this.lease.release();
       this.request++;
       replace(this.element);
       this.view = null;
@@ -52,9 +56,10 @@ export class Inspector {
     this.note = node("p", "property-note property-save-note");
     this.note.setAttribute("role", "status");
     this.saveButton = button("保存说明", () => this.save(), "button primary");
+    this.editButton = button("编辑说明", () => this.lease.proof ? this.lease.release() : this.startEditing(), "button secondary");
     this.saveButton.disabled = true;
     const actions = node("div", "dialog-actions");
-    actions.append(this.note, this.saveButton);
+    actions.append(this.note, this.editButton, this.saveButton);
     this.view = { fields, dynamic, request };
     replace(this.element, header, fields, actions);
     this.element.showModal();
@@ -82,7 +87,8 @@ export class Inspector {
       this.drafts.set(record.name, draft);
     }
     this.draft = draft;
-    this.description.disabled = false;
+    this.description.disabled = !canEdit(record);
+    this.description.readOnly = !this.lease.proof;
     this.description.value = draft.value;
     this.description.oninput = () => { draft.value = this.description.value; this.changed(); };
     const request = this.view.request;
@@ -91,6 +97,7 @@ export class Inspector {
       getDraft: this.getDraft,
       onEdit: (source) => { this.hide(); Promise.resolve(this.onEdit?.(source)).catch(this.onError); },
       onChange: () => this.changed(),
+      requestEdit: () => this.startEditing(),
       onError: (error) => { this.note.textContent = error.message; this.onError(error); },
     });
     this.details = details;
@@ -111,15 +118,35 @@ export class Inspector {
     const draft = this.draft;
     if (!draft) return;
     draft.dirty = draft.value !== draft.original || draft.bodyReady && draft.body !== draft.originalBody;
-    this.saveButton.disabled = !draft.dirty || draft.saving;
+    this.saveButton.disabled = !canEdit(this.current) || !this.lease.proof || !draft.dirty || draft.saving;
+    this.saveButton.hidden = !canEdit(this.current);
+    if (this.editButton) {
+      this.editButton.hidden = !canEdit(this.current);
+      this.editButton.disabled = Boolean(draft.saving || this.lease.state.status === "acquiring");
+      this.editButton.textContent = this.lease.proof ? "结束编辑" : "占用并编辑说明";
+    }
+    this.description.readOnly = !this.lease.proof || Boolean(draft.saving);
+    this.details?.setEditing?.(Boolean(this.lease.proof) && !draft.saving);
     if (draft.dirty && !draft.saving && draft.error)
       this.note.textContent = saveErrorPresentation(draft.error, { remote: typeof this.current?.token === "string" && this.current.token !== draft.baseToken }).message;
-    if (this.element.open && this.current) this.activity?.setTarget({ name: this.current.name, scope: "details", dirty: Boolean(draft.dirty) });
+    if (["busy", "lost", "acquiring"].includes(this.lease.state.status)) this.note.textContent = leaseMessage(this.lease.state);
+    if (this.element.open && this.current) this.activity?.setTarget({ name: this.current.name, scope: canEdit(this.current) && this.lease.proof ? "details" : undefined, dirty: canEdit(this.current) && Boolean(draft.dirty) });
+  }
+  async startEditing() {
+    if (!this.current || !canEdit(this.current) || this.draft?.saving) return false;
+    if (this.lease.proof) return true;
+    const cap = this.current, request = this.request;
+    const proof = await this.lease.acquire(cap.name, "details");
+    if (!this.visible(request) || this.current.name !== cap.name) return false;
+    this.changed();
+    if (proof) this.description.focus();
+    return Boolean(proof);
   }
   context(value) { this.selectionContext = value; }
   update(cap) {
     if (this.current?.name !== cap.name || !this.draft) return;
     this.current = { ...this.current, ...cap };
+    this.permissionsChanged();
     if (this.commit) { this.commit.textContent = `${kindLabels[cap.kind] || cap.kind} · ${shortCommit(cap.commit)}`; this.commit.title = cap.commit; }
     if (this.draft.baseToken !== cap.token) this.note.textContent = this.draft.error
       ? saveErrorPresentation(this.draft.error, { remote: true }).message
@@ -132,6 +159,9 @@ export class Inspector {
     const cap = this.current;
     this.refreshing = true;
     try {
+      const current = await action("stat", { name: cap.name });
+      if (!this.visible(request)) return;
+      if (current.token === this.current.token) { this.update(current); return; }
       const record = await action("details", { name: cap.name, from: 1, limit: 80 });
       if (!this.visible(request)) return;
       if (record.token !== this.draft.baseToken) {
@@ -144,8 +174,10 @@ export class Inspector {
   async save() {
     const cap = this.current;
     const draft = this.draft;
-    if (!cap || !draft?.dirty || draft.saving) return;
+    if (!cap || !canEdit(cap) || !draft?.dirty || draft.saving) return;
+    if (!this.lease?.proof) { this.note.textContent = "请先重新占用编辑；说明草稿和原版本已保留。"; return; }
     const value = draft.value;
+    const reservation = this.lease.capture();
     const body = draft.body;
     const withBody = cap.source?.type === "metadata" && draft.bodyReady;
     const fields = { name: cap.name, description: value, token: draft.baseToken, ...(withBody ? { body } : {}) };
@@ -158,7 +190,7 @@ export class Inspector {
     draft.error = undefined;
     this.saveButton.disabled = true;
     try {
-      const saved = await action(withBody ? "save-details" : "update", fields);
+      const saved = await action(withBody ? "save-details" : "update", fields, { lease: this.lease.requireProof() });
       draft.original = value;
       if (withBody) draft.originalBody = body;
       draft.baseToken = saved.token;
@@ -178,15 +210,24 @@ export class Inspector {
       this.onError(error);
     } finally {
       draft.saving = false;
-      if (this.current?.name === cap.name && this.view) { this.saveButton.disabled = !draft.dirty; this.changed(); }
+      this.lease.release(reservation);
+      if (this.current?.name === cap.name && this.view) { this.saveButton.disabled = !canEdit(this.current) || !draft.dirty; this.changed(); }
     }
+  }
+  permissionsChanged() {
+    if (!this.current || !this.view) return;
+    this.description.disabled = !canEdit(this.current);
+    if (!canEdit(this.current)) this.lease.release();
+    this.details?.updatePermissions?.(this.current);
+    this.changed();
   }
   hide() {
     this.request++;
+    this.view = null;
     this.activity?.clear();
+    this.lease.release();
     if (this.element.open) this.element.close();
     replace(this.element);
-    this.view = null;
   }
   toggle() { if (this.element.open) this.hide(); else if (this.selected) this.open(this.selected); }
 }

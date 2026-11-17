@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { TextEditor } from "../web/editor.mjs";
 import { OfficeState } from "../web/office-state.mjs";
 import { OfficeView } from "../web/office.mjs";
+import { testLease } from "./leaseFixture.mjs";
 
 function textFixture(onDirty = () => {}) {
   const cap = { name: "notes.md", token: "old-token", commit: "old-commit" };
-  const editor = new TextEditor({ onSaved() {}, onError() {}, onDirty });
+  const editor = new TextEditor({ onSaved() {}, onError() {}, onDirty, createLease: () => testLease() });
   const key = editor.key(cap.name);
   const draft = { body: "edited", original: "original", baseToken: cap.token, baseCommit: cap.commit, dirty: true };
   editor.drafts.set(key, draft);
@@ -78,7 +79,7 @@ test("标题保存冲突保留文本和基线，仍可查找放弃草稿入口",
 
 test("Office 标题控件遵从收集、保存确认和冲突恢复状态", () => {
   const view = Object.create(OfficeView.prototype);
-  Object.assign(view, { state: new OfficeState({ commit: "base", token: "original" }), ready: true });
+  Object.assign(view, { state: new OfficeState({ commit: "base", token: "original" }), ready: true, lease: testLease() });
   assert.equal(view.controlsInfo().state, "clean");
   view.state.changed(true);
   assert.equal(view.controlsInfo().state, "dirty");
@@ -93,6 +94,6 @@ test("Office 标题控件遵从收集、保存确认和冲突恢复状态", () =
   const conflict = view.controlsInfo();
   assert.equal(conflict.state, "conflict");
   assert.equal(conflict.canSave, false);
-  assert.equal(conflict.moreItems[1].label, "下载恢复原件");
+  assert.ok(conflict.moreItems.some((item) => item.label === "下载恢复原件"));
   assert.equal(view.state.hasDirty(), true);
 });

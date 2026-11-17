@@ -16,6 +16,8 @@ CAPSULE_ONLYOFFICE_URL=http://127.0.0.1:8081 npm run ui
 
 ## 编辑与保存
 
+Office配置使用当前员工身份和cap权限。工作台默认以view浏览，不获取编辑占用；有编辑权限时可在标题菜单选择“占用并编辑Office”，取得office共享租约并重开编辑配置。只读员工始终edit:false。纯浏览不阻挡清除或备份；真实编辑会话的关闭仍等待文档服务确认。签名源票据绑定该身份，force-save及最终回调在发布前重查凭据、授权和cap incarnation。撤销或同名重建不能借旧编辑器覆盖新数据；已接收的完整输出保留作恢复材料，实际下载仍需当前授权。员工身份与审计规则见[管理说明](../../capsule-server/docs/access.md)。
+
 选择Office单文件cap或目录cap内的Office条目后，工作台创建绑定读取token的编辑会话。正文、表格、格式和公式由ONLYOFFICE编辑器处理，主界面不再使用占位符表单或单元格地址表单代替Office编辑。
 
 编辑器中文界面由lang指定，它不设置DOCX正文的校对语言。自动拼写检查通过服务端签名配置features.spellcheck默认关闭，避免中文内容按错误词典大面积标红；用户仍可在ONLYOFFICE中选择文档语言并开启校对。此设置不改变原件文字、下划线格式或修订。ONLYOFFICE保存的浏览器校对偏好优先于默认值；已有页面若仍标红，可用编辑器“文件 → 高级设置”关闭“启用拼写检查”，或点击底部拼写检查图标。配置更新在安全地重新打开编辑器时生效，不为此自动重建活跃会话。参数依据见[官方拼写检查配置](https://api.onlyoffice.com/docs/docs-api/usage-api/config/editor/customization/customization-standard-branding#featuresspellcheck)。
@@ -47,9 +49,13 @@ Office-open返回可交给DocsAPI.DocEditor的配置，包含短期票据，仅�
 
 本地桥接action为office-status、office-open（name、可选entry、token）、office-session（id）和office-save（id）。CLI和图形桥接复用src/office/sessions.mjs。
 
+office-open另接受mode:view/edit，CLI默认edit兼容既有用法，纯浏览显式用--mode view。编辑期间使用office范围租约，保存确认、结束编辑或离开时释放；租约失效保留编辑器内容并冻结保存，迟到回调遇到新独占编辑会保留恢复原件。租约与文档服务会话分别管理，见[并发说明](../../capsule-server/docs/concurrency.md)。
+
 ## 额外的渐进读取与批处理工具
 
 preview命令继续为Agent提取DOCX文字与表格、XLSX工作表数据，使用Mammoth、ExcelJS及SheetJS兼容读取。它不承担主网页编辑器的渲染。原件最多16MiB，ZIP及XML限制继续适用。
+
+Office原件读取与工作台共用本机ETag缓存，重复预览仍向服务端重新鉴权，但未变字节通过304复用；解析前后仍核对版本，详见[原件缓存与流量](content-cache.md)。ONLYOFFICE Docs自身的文件传输和缓存由文档服务管理，不把本机缓存当作其保存回执。
 
 既有office-write命令保留为显式批处理工具：ExcelJS修改指定单元格，docx填写已有模板中的{{key}}。这些操作有独立token保护与支持边界，不作为Word正文编辑入口。复杂原件不保证完整保真，不支持安全写回的原件明确拒绝。
 

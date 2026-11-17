@@ -3,8 +3,8 @@ import { ActionMenu } from "./menu.mjs";
 import { NavigationResize } from "./navigation-resize.mjs";
 
 export class LibraryShell {
-  constructor({ tree, panel, dialogs, theme, onCreate, onReconnect, onError }) {
-    Object.assign(this, { tree, panel, dialogs, theme, onReconnect });
+  constructor({ tree, panel, dialogs, theme, onCreate, onReconnect, onAdmin, onError }) {
+    Object.assign(this, { tree, panel, dialogs, theme, onReconnect, onAdmin });
     this.menuButton = document.getElementById("library-menu");
     this.connection = document.getElementById("connection");
     this.badge = document.getElementById("event-badge");
@@ -92,9 +92,15 @@ export class LibraryShell {
       { separator: true },
       { label: "刷新知识库", icon: "refresh", action: () => this.tree.refresh() },
       { label: "连接信息", action: () => this.connectionInfo() },
+      { label: "账户与管理", icon: "info", action: () => this.onAdmin?.() },
       { label: "深色模式", checked: this.theme.isDark(), action: () => this.theme.toggle() },
       { label: "使用说明", action: () => this.help() },
     ];
+  }
+  setIdentity(identity) {
+    this.identity = identity;
+    const create = document.getElementById("new-cap");
+    if (create) { create.hidden = !identity?.permissions?.create; create.disabled = !identity?.permissions?.create; }
   }
   setAttention(count) {
     this.attention = count;

@@ -1,5 +1,6 @@
 import { action } from "./api.mjs";
 import { node, replace, shortCommit, timeLabel } from "./dom.mjs";
+import { startPolling, waitUntilVisible } from "./polling.mjs";
 
 const labels = { pending: "排队中", running: "处理中", succeeded: "已完成", failed: "失败", conflict: "版本冲突" };
 const typeLabels = { create: "创建", write: "写入", metadata: "属性", revert: "回撤", delete: "清除", organize: "位置组织" };
@@ -102,8 +103,11 @@ export class EventPanel {
     try {
       while (["pending", "running"].includes(current.status)) {
         await new Promise((resolve) => setTimeout(resolve, 700));
+        await waitUntilVisible();
         current = await action("event", { id: event.id });
-        if (!this.element.classList.contains("hidden") && this.mode === "events") await this.refresh();
+        const listed = this.events.findIndex((event) => event.id === current.id);
+        if (listed >= 0) this.events[listed] = current;
+        if (!this.element.classList.contains("hidden") && this.mode === "events") this.renderEvents(this.events);
       }
       await this.finish(current);
     } catch (error) {
@@ -132,15 +136,10 @@ export class EventPanel {
     } finally { this.finishing.delete(event.id); }
   }
   startPolling() {
-    this.refresh({ eventsOnly: true, quiet: true });
-    this.lastBackgroundPoll = Date.now();
-    this.timer = setInterval(() => {
+    this.poller?.stop();
+    this.poller = startPolling(() => {
       const visible = !this.element.classList.contains("hidden") && this.mode === "events";
-      if (visible) this.refresh();
-      else if (Date.now() - this.lastBackgroundPoll >= 30000) {
-        this.lastBackgroundPoll = Date.now();
-        this.refresh({ eventsOnly: true, quiet: true });
-      }
-    }, 3000);
+      return this.refresh(visible ? {} : { eventsOnly: true, quiet: true });
+    }, { interval: () => !this.element.classList.contains("hidden") && this.mode === "events" ? 3000 : 30000, immediate: true });
   }
 }

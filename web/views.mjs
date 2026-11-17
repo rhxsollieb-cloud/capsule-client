@@ -1,4 +1,5 @@
 import { action, contentUrl } from "./api.mjs";
+import { canEdit } from "./permissions.mjs";
 import { button, fileKind, node, replace, shortCommit, sizeLabel, timeLabel } from "./dom.mjs";
 import { icon } from "./icons.mjs";
 
@@ -92,8 +93,8 @@ export async function historyView(container, cap, isCurrent, onRevert, onError) 
         const commit = node("span", "mono commit-value", shortCommit(item.commit));
         commit.title = item.commit;
         info.append(commit, node("strong", "", item.message), node("span", "muted", item.description || ""), node("time", "muted", timeLabel(item.createdAt)));
-        const restore = button(item.commit === cap.commit ? "当前版本" : "回撤", () => onRevert(item));
-        restore.disabled = item.commit === cap.commit;
+        const restore = button(item.commit === cap.commit ? "当前版本" : "回撤", () => { if (canEdit(cap)) onRevert(item); });
+        restore.disabled = !canEdit(cap) || item.commit === cap.commit;
         row.append(info, restore);
         wrapper.append(row);
       }

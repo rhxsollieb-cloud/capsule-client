@@ -2,11 +2,12 @@ import { constants } from "node:fs";
 import { access, link, lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-const receiptKeys = ["id", "name", "entry", "path", "commit", "token", "eventId", "status", "code", "error", "lines", "total", "nextOffset", "scanned", "returned", "truncated", "budgetLimited"];
+const receiptKeys = ["id", "name", "entry", "path", "commit", "token", "eventId", "operationId", "status", "code", "error", "lines", "total", "nextOffset", "scanned", "returned", "truncated", "budgetLimited", "revision", "previewId", "restoreId", "backupId", "checksum", "confirmationName", "expiresAt", "isolated"];
 const guideKeys = ["guideVersion", "scope", "topic", "title", "source", "next"];
 const preservedKeys = (value) => value.guideVersion === undefined ? receiptKeys : [...receiptKeys, ...guideKeys];
 const select = (value, keys) => Object.fromEntries(keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, value[key]]));
 const encoded = (value) => JSON.stringify(value, null, 2);
+const sensitiveCommands = new Set(["user-create", "credential-create", "lease-acquire"]);
 
 function project(value, fields) {
   if (!fields || !value || typeof value !== "object" || Array.isArray(value)) return value;
@@ -18,7 +19,7 @@ function project(value, fields) {
 function summary(value, characters) {
   const receipt = value && typeof value === "object" && !Array.isArray(value) ? select(value, preservedKeys(value)) : {};
   if (receipt.error && typeof receipt.error === "object") {
-    receipt.error = select(receipt.error, ["message", "code", "status", "eventId", "unknownResult"]);
+    receipt.error = select(receipt.error, ["message", "code", "status", "eventId", "operationId", "unknownResult"]);
     if (receipt.error.message?.length > 128) receipt.error.message = receipt.error.message.slice(0, 128) + "…";
   }
   if (typeof receipt.error === "string" && receipt.error.length > 256) receipt.error = receipt.error.slice(0, 256) + "…";
@@ -111,7 +112,7 @@ export async function prepareOutput(output = {}) {
   await access(dirname(path), constants.W_OK);
 }
 
-export async function printResult(value, { output = {}, values = {} } = {}, io = process) {
+export async function printResult(value, { output = {}, values = {}, command } = {}, io = process) {
   const selected = project(value, output.fields);
   if (output.outFile) {
     const path = resolve(output.outFile);
@@ -120,13 +121,19 @@ export async function printResult(value, { output = {}, values = {} } = {}, io =
     try {
       directory = await mkdtemp(join(dirname(path), ".capsule-output-"));
       const temporary = join(directory, "result.json");
-      await writeFile(temporary, text, { flag: "wx" });
+      await writeFile(temporary, text, { flag: "wx", ...(sensitiveCommands.has(command) ? { mode: 0o600 } : {}) });
       await link(temporary, path);
     }
     catch (error) {
       const failure = new Error(`操作已返回，但保存输出失败：${error.message}；不要重放已完成的写入`, { cause: error });
       failure.code = "OUTPUT_WRITE_FAILED";
-      failure.result = summary(value, text.length);
+      const issued = sensitiveCommands.has(command) && (value.token || value.bootstrapCredential?.token || value.lease?.token);
+      const credential = value.credential || value.bootstrapCredential?.credential;
+      failure.result = issued ? {
+        token: issued, ...(credential?.id ? { id: credential.id } : {}), ...(credential?.userId ? { userId: credential.userId } : {}),
+        ...(command === "lease-acquire" ? { leaseAcquired: true, id: value.lease.id } : { credentialIssued: true }), outputFailed: true,
+        hint: command === "lease-acquire" ? "占用已获取，文件未保存。请保存凭证并及时续租或释放，不要改id重放获取。" : "凭据已签发，文件未保存。本响应仅显示一次，请立即保存，勿重放签发。",
+      } : summary(value, text.length);
       throw failure;
     }
     finally { if (directory) await rm(directory, { recursive: true, force: true }); }
@@ -142,10 +149,10 @@ export async function printResult(value, { output = {}, values = {} } = {}, io =
   io.stdout.write(encoded(boundedResult(selected, output.maxChars, { offset: values.offset || 0 })) + "\n");
 }
 
-export function machineError(error, { token, command } = {}) {
+export function machineError(error, { token, leaseToken, command } = {}) {
   const knownTerminal = ["failed", "conflict"].includes(error.result?.status);
   const scrub = (value) => {
-    if (typeof value === "string") return token ? value.replaceAll(token, "[凭据已隐藏]") : value;
+    if (typeof value === "string") { for (const secret of [token, leaseToken].filter(Boolean)) value = value.replaceAll(secret, "[凭据已隐藏]"); return value; }
     if (Array.isArray(value)) return value.map(scrub);
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrub(item)]));
     return value;
@@ -156,7 +163,8 @@ export function machineError(error, { token, command } = {}) {
     ...(error.status === undefined ? {} : { status: error.status }),
     ...(command ? { command } : {}),
     ...(error.eventId ? { eventId: error.eventId } : {}),
+    ...(error.operationId ? { operationId: error.operationId } : {}),
     ...(error.uncertain ? { uncertain: true } : {}),
     ...(error.unknownResult || error.uncertain || (!knownTerminal && /结果未知|不能自动重放/.test(error.message || "")) ? { unknownResult: true } : {}),
-  }, ...(error.result ? { result: error.result } : {}) });
+  }, ...(Array.isArray(error.leases) ? { leases: error.leases } : {}), ...(error.result ? { result: error.result } : {}) });
 }

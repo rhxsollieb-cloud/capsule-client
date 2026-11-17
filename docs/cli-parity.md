@@ -11,6 +11,7 @@
 | 位置批量规划 | organize inspect/dry-run/apply/receipt | 仅mount/move/unmount；顺序规划依赖，同一目录事务提交。没有把多cap内容创建/更新冒充同一原子事务 |
 | 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
 | 缓存复用 | sync、run及Skill注册共享跨进程缓存锁 | 同提交与完整本地对象复用；新版本可增量下载，changed只表示checkout变化。默认等锁30秒，CACHE_BUSY及异常锁见[缓存架构](architecture.md#同步与运行) |
+| 小原件复用 | get、preview及工作台原件共享ETag缓存 | 每次重验当前权限；16MiB单文件、128MiB已登记磁盘LRU，Range和大媒体不整包预取，见[流量说明](content-cache.md) |
 | 渐进读取 | read/details行范围，list/entries/query分页，fields/raw/max-chars/out | 保留token与续读；字段省略和预算省略明确可见，不把摘录当完整正文 |
 | 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
 | 精确文字修改 | edit | 全部分页需同一原token；0匹配失败，多匹配显式all；默认详述，显式路径通过原件文本接口写回 |
@@ -19,8 +20,11 @@
 | 离线规范说明 | guide、guide data、guide skills | 直接按行读取本包维护的规范正文，保留范围及续读；不联网、不初始化工作区，不冒称远端实时协商 |
 | 本机诊断 | doctor/paths | paths不创建目录、不联网，只显示客户端工作区；不返回或猜测远端原件真实文件系统路径 |
 | 胶囊活动 | activity 名称 | 只读查询全部未过期会话、未完成事件、Office及队列状态；CLI不按tab排除自身，不注册心跳，会话数不是人数，提示不是锁 |
+| 编辑占用 | lease-status/acquire/renew/release及写命令--lease | 与前端共用operations/leases；cap级20秒租约，5秒续期，完成立即释放；原版本token继续校验，见[并发说明](../../capsule-server/docs/concurrency.md) |
 | Office与数据库 | 独立Office会话与提取/批处理、SQLite查询/表格写入 | 复用对应业务模块，格式与保存边界由Office及数据库说明维护 |
 | Skill | 固定CLI、精确提交运行、本机注册及可选协作界面 | 依赖与工具业务归Skill自身，客户端不假定仅支持Node内置依赖，不自动安装依赖 |
+| 员工、权限与审计 | me/users/user-create/user-update/credentials/credential-create/credential-revoke/grants/grant-set/audit | 同一admin operations供CLI与界面使用；个人凭据原文仅签发一次，授权revision与正文token分开 |
+| 整库备份与恢复 | backups/backup-create/backup-inspect/backup-register/backup-verify/backup-download/backup-restore-preview/backup-restore/backup-receipt | 管理员维护屏障快照、独立校验、外存目录认领及隔离恢复；不自动覆盖运行库或切换服务 |
 
 ## 命令与共享操作
 
@@ -39,6 +43,8 @@ input.mjs共用文件与标准输入读取，按实际读取字节限制，普�
 output.mjs默认JSON不改变小结果结构；字段选择后保留身份与版本/续读，页面预算从末尾减少完整记录并重算游标，正文按整行减少。不能安全分割的结果标记dataOmitted；具备行/候选游标时保留重试起点，不跳过未输出内容。run等结果没有stdout续读游标，不能通过分页取回被省略的输出。必要回执本身过大时整字段省略并记录omittedFields，不切断token或事件ID。read/details与guide主题的--raw输出所选正文，不附JSON或额外换行；超预算报错，不输出半份正文。正文行结束符按读取接口归一化，原件字节应通过get取得。
 
 --out在执行前检查目标不存在，完成后以同目录临时文件和hardlink发布所选字段的完整JSON，不覆盖既有文件、不留半份JSON；它不自动读取剩余页。输出失败不等于业务未执行，应先核对回执。run会尝试把结果保存到client.sqlite，本机日志失败会有logError，不能保证结果已持久化；事前可用--out，不能为取更多stdout重跑有副作用的Skill。
+
+user-create和credential-create可能只返回一次个人凭据，调用前拒绝--fields；显式小于2048字符的输出预算须改用--out或增大预算，避免执行后才遗漏唯一令牌。这两类--out文件以0600权限发布，成功时stdout只返回文件回执；若签发已完成而保存文件失败，失败回执会保留一次性令牌并提醒立即保存，应按敏感响应处理。不能把输出失败理解为未签发并直接重做。
 
 默认stdout为JSON结果/必要事件回执，stderr为宿主异常诊断。--json-errors在捕获宿主异常时输出机器错误，保留HTTP status、code、eventId及uncertain/unknownResult。Skill子进程非零或logError仍返回普通run回执并非零退出，不自动包装error，也不代表没有执行。已知CAPSULE_TOKEN在配置前参数错误及宿主错误输出中隐藏。run的--之后原样交给Skill，不把Skill的--help或--json-errors当宿主参数。
 
@@ -61,7 +67,7 @@ dry-run和apply使用同一规划器及基线校验，apply的offset必须为0�
 
 ## 仍未实现及不适用
 
-没有完整全库备份/恢复CLI。每cap Git bundle、本机缓存或单文件下载不能覆盖全库catalog、全部cap原件/Git、挂载、事件及恢复资料的一致快照。完整备份需要单独的快照与实际恢复验证，不能仅复制活动SQLite就声称一致。
+整库备份经服务端维护屏障生成catalog、原件、Git和必要恢复资料的一致快照；每cap bundle、本机缓存或单文件下载不能替代它。backup-restore仅生成隔离工作区，生产切换、异机存储、周期调度、自动保留和客户端本机state备份仍由独立运维流程负责，见[备份恢复](../../capsule-server/docs/backups.md)。
 
 尚未实现cap复制、改名、通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查已登记挂载，不把挂载推断为来源或共享数据。复制若后续实现，应生成独立cap内容与Git。
 

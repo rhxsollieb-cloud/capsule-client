@@ -1,11 +1,14 @@
 let csrfToken;
+const inflight = new Map();
+const sharedReads = new Set(["health", "me", "stat", "entries", "read", "details", "list", "ls", "where", "overview",
+  "search", "history", "events", "event", "position", "activity", "office-status", "office-session", "skill-status", "table", "query"]);
 
 async function payload(response) {
   let value;
   try { value = await response.json(); } catch { value = {}; }
   if (!response.ok) {
     const error = new Error(value.error || `请求失败（${response.status}）`);
-    Object.assign(error, { status: response.status, code: value.code, eventId: value.eventId, result: value.result, uncertain: value.uncertain });
+    Object.assign(error, { status: response.status, code: value.code, eventId: value.eventId, operationId: value.operationId, result: value.result, uncertain: value.uncertain, leases: value.leases });
     throw error;
   }
   return value;
@@ -13,18 +16,39 @@ async function payload(response) {
 
 export async function initialize() {
   const session = await payload(await fetch("/ui/session", { cache: "no-store" }));
+  inflight.clear();
   csrfToken = session.csrfToken;
   return session;
 }
 
-export async function action(name, fields = {}, { signal, keepalive = false } = {}) {
-  return payload(await fetch("/ui/action", {
+export async function action(name, fields = {}, { signal, keepalive = false, lease } = {}) {
+  const reading = sharedReads.has(name);
+  if (!reading) inflight.clear();
+  const body = JSON.stringify({ action: name, ...fields });
+  const key = reading && !signal && !keepalive && !lease ? csrfToken + "\0" + body : undefined;
+  if (key && inflight.has(key)) return inflight.get(key).then((value) => structuredClone(value));
+  const request = Promise.resolve(fetch("/ui/action", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Capsule-Session": csrfToken },
-    body: JSON.stringify({ action: name, ...fields }),
+    headers: { "Content-Type": "application/json", "X-Capsule-Session": csrfToken, ...(lease ? { "X-Capsule-Lease": lease } : {}) },
+    body,
     ...(signal ? { signal } : {}),
     ...(keepalive ? { keepalive: true } : {}),
-  }));
+  })).then(payload).finally(() => { if (!reading) inflight.clear(); });
+  if (!key) return request;
+  const shared = request.finally(() => { if (inflight.get(key) === shared) inflight.delete(key); });
+  inflight.set(key, shared);
+  return shared.then((value) => structuredClone(value));
+}
+
+export async function readIdentity() {
+  try { return await action("me"); }
+  catch (error) {
+    if ([400, 404].includes(error.status) && /未知客户端操作|接口不存在|not found/i.test(error.message)) {
+      error.code = "IDENTITY_API_UNAVAILABLE";
+      error.message = "客户端或服务端尚未提供身份接口。请先保存未提交内容，再同步更新并重启两端服务；不会退回匿名访问。";
+    }
+    throw error;
+  }
 }
 
 export function contentUrl(name, entry, download = false) {
@@ -34,14 +58,17 @@ export function contentUrl(name, entry, download = false) {
   return `/ui/content?${query}`;
 }
 
-export async function upload(name, entry, file, token) {
+export async function upload(name, entry, file, token, { lease } = {}) {
+  inflight.clear();
   const query = new URLSearchParams({ name });
   if (entry !== undefined) query.set("entry", entry);
-  return payload(await fetch(`/ui/upload?${query}`, {
-    method: "PUT",
-    headers: { "X-Capsule-Session": csrfToken, "If-Match": token },
-    body: file,
-  }));
+  try {
+    return await payload(await fetch(`/ui/upload?${query}`, {
+      method: "PUT",
+      headers: { "X-Capsule-Session": csrfToken, "If-Match": token, ...(lease ? { "X-Capsule-Lease": lease } : {}) },
+      body: file,
+    }));
+  } finally { inflight.clear(); }
 }
 
 async function readPages(operation, name, entry, isCurrent) {

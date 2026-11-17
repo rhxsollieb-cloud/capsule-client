@@ -1,4 +1,4 @@
-import { commandDefinition } from "./catalog.mjs";
+import { commandDefinition, leaseWriteCommands } from "./catalog.mjs";
 import { capsuleCommand } from "./capsules.mjs";
 import { dataCommand } from "./data.mjs";
 import { detailsCommand } from "./details.mjs";
@@ -18,8 +18,13 @@ import { previewOffice } from "../preview/office.mjs";
 import { synchronize } from "../cache/sync.mjs";
 import { runCapsule } from "../runtime/run.mjs";
 import { doctor } from "../runtime/doctor.mjs";
+import { adminCommand } from "./admin.mjs";
+import { leaseCommand } from "./leases.mjs";
+import { leasedApi } from "../operations/leases.mjs";
 
 const handlers = {
+  admin: adminCommand,
+  leases: leaseCommand,
   activity: (api, args) => readActivity(api, { name: args.positional[0] }),
   capsule: capsuleCommand,
   data: dataCommand,
@@ -45,5 +50,9 @@ const handlers = {
 
 export const handlerNames = Object.keys(handlers);
 export function dispatch(args, api, context) {
+  if (leaseWriteCommands.has(args.command)) {
+    if (!(args.command === "office-open" && args.values.mode === "view")) api = leasedApi(api, args.values.lease || api.config?.leaseToken);
+    args = { ...args, values: Object.fromEntries(Object.entries(args.values).filter(([key]) => key !== "lease")) };
+  }
   return handlers[commandDefinition(args.command).handler](api, args, context);
 }

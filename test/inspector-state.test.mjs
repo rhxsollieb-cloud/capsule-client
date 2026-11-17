@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Inspector } from "../web/inspector.mjs";
+import { testLease } from "./leaseFixture.mjs";
 
 test("属性保存提供进行中状态，不能重复提交且继续输入保留草稿", async (t) => {
   let release;
@@ -11,7 +12,7 @@ test("属性保存提供进行中状态，不能重复提交且继续输入保�
   });
   const draft = { value: "待保存说明", original: "原始说明", dirty: true, baseToken: "old" };
   const inspector = Object.assign(Object.create(Inspector.prototype), {
-    current: { name: "资料" }, draft, saveButton: {}, note: {},
+    current: { name: "资料" }, draft, saveButton: {}, note: {}, lease: testLease(),
     onSaved() {}, onError(error) { throw error; },
   });
   const saving = inspector.save();

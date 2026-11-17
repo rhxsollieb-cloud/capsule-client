@@ -72,11 +72,23 @@ test("下载流中断后清理暂存，已有目标保持原字节", async (t) =
   await assert.rejects(failing.download("/content", destination), /中途断开/u);
   assert.deepEqual(await readdir(directory), []);
   await writeFile(destination, "original");
-  const succeeding = new ApiClient({ serverUrl: "http://test", token: "" }, async () =>
-    new Response("replacement"));
+  let requested = 0;
+  const succeeding = new ApiClient({ serverUrl: "http://test", token: "" }, async () => { requested++; return new Response("replacement"); });
   await assert.rejects(succeeding.download("/content", destination), { code: "EEXIST" });
   assert.equal(await readFile(destination, "utf8"), "original");
   assert.deepEqual(await readdir(directory), ["result.bin"]);
+  assert.equal(requested, 0, "已有目标须在请求远端内容前拒绝");
+});
+
+test("304仅在显式条件GET或HEAD读取时接受，其他3xx继续拒绝", async () => {
+  const api = new ApiClient({ serverUrl: "http://test" }, async () => new Response(null, { status: 304 }));
+  await assert.rejects(api.response("/content"), { code: "SERVER_REDIRECT" });
+  await assert.rejects(api.response("/content", {}, { allowNotModified: true }), { code: "SERVER_REDIRECT" });
+  assert.equal((await api.response("/content", { headers: { "If-None-Match": '"known"' } }, { allowNotModified: true })).status, 304);
+  assert.equal((await api.response("/content", { method: "HEAD", headers: { "If-None-Match": '"known"' } }, { allowNotModified: true })).status, 304);
+  await assert.rejects(api.response("/content", { method: "POST", headers: { "If-None-Match": '"known"' } }, { allowNotModified: true }), { code: "SERVER_REDIRECT" });
+  api.fetcher = async () => new Response(null, { status: 302 });
+  await assert.rejects(api.response("/content", { headers: { "If-None-Match": '"known"' } }, { allowNotModified: true }), { code: "SERVER_REDIRECT" });
 });
 
 test("下载目标目录无效时先拒绝，不打开远端媒体流", async (t) => {

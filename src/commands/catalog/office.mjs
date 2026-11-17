@@ -1,4 +1,4 @@
-import { requiredText, version } from "./options.mjs";
+import { requiredText, text, version } from "./options.mjs";
 
 export const group = {
   id: "office", title: "Office工作区",
@@ -10,8 +10,8 @@ export const group = {
   },
   {
     name: "office-open", arity: [1,2], handler: "officeSession",
-    options: { "token": version },
-    help: "office-open 名称 [内部路径] --token 当前token\n创建绑定原件版本的ONLYOFFICE编辑会话。返回config含短期原件票据，仅提供给当前编辑器。",
+    options: { "token": version, mode: text },
+    help: "office-open 名称 [内部路径] --token 当前token [--mode view|edit]\n创建绑定原件版本的ONLYOFFICE会话；view浏览不占用，默认edit可与其他Office编辑者协作。编辑时建议先获取office租约并用--lease传入。返回config含短期原件票据，仅提供给当前编辑器。",
   },
   {
     name: "office-session", arity: [1,1], handler: "officeSession",
