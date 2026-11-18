@@ -28,6 +28,25 @@ export class Dialogs {
   }
   show() { this.element.showModal(); }
   copy(item) { return copyDialog(this, item); }
+  async copyPath(path) {
+    try {
+      await navigator.clipboard.writeText(path);
+      return true;
+    } catch {
+      if (this.element.open) throw new Error("剪贴板不可用，请关闭当前对话框后重试");
+      const view = this.form("复制路径");
+      const value = node("input", "property-input");
+      value.readOnly = true;
+      value.value = path;
+      view.form.addEventListener("submit", (event) => event.preventDefault());
+      view.fields.append(formField("虚拟路径", value), node("p", "property-note", "按 Ctrl+C 或 ⌘C 复制选中的路径。"));
+      view.actions.replaceChildren(button("关闭", () => this.element.close()));
+      this.show();
+      value.focus();
+      value.select();
+      return false;
+    }
+  }
   upload(cap, entry, onUploaded) {
     if (!canEdit(cap)) { this.onError(new Error("当前身份没有该 cap 的修改权限")); return; }
     const markdown = cap.kind === "markdown";

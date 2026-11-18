@@ -46,7 +46,7 @@ test("只读内容各写入口拒绝发送保存，保留原草稿并禁用节�
   const items = TreeActions.prototype.items.call({ current: { ...cap, path: "/只读内容" } });
   assert.equal(items.find((item) => item.label?.startsWith("清除")).disabled, true);
   assert.equal(items.find((item) => item.label?.startsWith("断开")).disabled, true);
-  assert.equal(items.find((item) => item.label?.startsWith("复制")).disabled, false);
+  assert.equal(items.find((item) => item.label === "复制为新 cap…").disabled, false);
   assert.equal(calls, 0);
   assert.equal(draft.dirty, true);
   assert.equal(draft.baseToken, "original");

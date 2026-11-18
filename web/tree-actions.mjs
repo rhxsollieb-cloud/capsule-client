@@ -12,6 +12,7 @@ export class TreeActions {
     const item = this.current;
     return [
       { label: "属性", icon: "info", action: () => this.onManage("properties", item) },
+      ...(item.path ? [{ label: "复制路径", icon: "copy", action: () => this.onManage("copy-path", item) }] : []),
       { label: "复制为新 cap…", disabled: !canCreate(), action: () => this.onManage("copy", item) },
       { separator: true },
       { label: "断开当前挂载…", disabled: !item.path || !canEdit(item), action: () => this.onManage("unlink", item) },
@@ -20,10 +21,18 @@ export class TreeActions {
     ];
   }
   bind(row, item, mounted) {
-    const properties = button("", (event) => {
+    const invoke = (operation) => (event) => {
       event.stopPropagation();
-      Promise.resolve(this.onManage("properties", { ...item })).catch(this.menu.onError);
-    }, "icon-button tree-actions tree-properties");
+      Promise.resolve(this.onManage(operation, { ...item })).catch(this.menu.onError);
+    };
+    if (mounted && item.path) {
+      const copy = button("", invoke("copy-path"), "icon-button tree-actions tree-copy-path");
+      copy.append(icon("copy"));
+      copy.title = "复制路径";
+      copy.setAttribute("aria-label", copy.title);
+      row.append(copy);
+    }
+    const properties = button("", invoke("properties"), "icon-button tree-actions tree-properties");
     properties.append(icon("info"));
     properties.title = `${item.name} · 属性`;
     properties.setAttribute("aria-label", properties.title);

@@ -28,6 +28,7 @@ const paths = {
   upload: "M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5",
   download: "M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4",
   save: "M4 3h14l3 3v15H3V3h1ZM7 3v6h10V3M7 21v-8h10v8",
+  copy: "M9 8h12v13H9zM5 17H3V3h13v2",
   info: "M12 11v6M12 7h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z",
 };
 

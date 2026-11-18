@@ -123,7 +123,9 @@ const tree = new KnowledgeTree(document.getElementById("tree"), {
   onError,
   onViewChanged: () => shell?.updateView(),
   onManage: (operation, item) => operation === "properties" ? inspector.open(item)
-    : operation === "copy" ? dialogs.copy(item) : management.open(operation, item),
+    : operation === "copy" ? dialogs.copy(item)
+    : operation === "copy-path" ? dialogs.copyPath(item.path).then((copied) => { if (copied) notify("已复制路径"); })
+    : management.open(operation, item),
 });
 
 function applyIdentity(identity) {

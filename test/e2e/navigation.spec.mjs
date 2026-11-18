@@ -12,6 +12,35 @@ test("左侧节点与第二列文件都能显示真实正文", async ({ page, ap
   await expect(page.locator("#document-header")).toContainText("清单.txt");
 });
 
+test("复制路径使用该行的完整挂载，剪贴板受限时可手动复制", async ({ page, app }) => {
+  const path = "/工作说明.md/示例图.png";
+  await app.api.json("/api/mounts", "POST", { name: "示例图.png", path });
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis.navigator, "clipboard", { value: { async writeText(text) {
+      if (globalThis.denyPathCopy) throw new Error("剪贴板权限受限");
+      globalThis.copiedPath = text;
+    } } });
+  });
+  await login(page, app, app.editor);
+  await selectCap(page, "工作说明.md");
+  const tree = page.locator("#tree");
+  await tree.locator('[data-path="/工作说明.md"]').getByRole("button", { name: "展开", exact: true }).click();
+  const row = tree.locator(`[data-path="${path}"]`);
+  const copy = row.getByRole("button", { name: "复制路径", exact: true });
+  await copy.press("Enter");
+  await expect(page.locator("#toast")).toHaveText("已复制路径");
+  expect(await page.evaluate(() => globalThis.copiedPath)).toBe(path);
+  await expect(tree.locator(".tree-row.selected")).toHaveAttribute("data-path", "/工作说明.md");
+
+  await page.evaluate(() => { globalThis.denyPathCopy = true; });
+  await row.getByRole("button", { name: "示例图.png", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "复制路径", exact: true }).click();
+  const value = page.getByRole("dialog", { name: "复制路径" }).getByRole("textbox", { name: "虚拟路径" });
+  await expect(value).toHaveValue(path);
+  await expect(value).toBeFocused();
+  expect(await value.evaluate((input) => input.value.slice(input.selectionStart, input.selectionEnd))).toBe(path);
+});
+
 test("图片原件实际加载，数据库显示真实业务行", async ({ page, app }) => {
   await login(page, app);
   await selectCap(page, "示例图.png");
