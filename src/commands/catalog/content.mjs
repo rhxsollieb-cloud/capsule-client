@@ -5,8 +5,8 @@ export const group = {
   commands: [
   {
     name: "entries", arity: [1,1], handler: "capsule",
-    options: { "limit": integer(1, 100), "offset": integer(0, 1000000) },
-    help: "entries 名称 [--limit 数量] [--offset 偏移]\n列出胶囊内部文件。",
+    options: { "directory": text, "limit": integer(1, 100), "offset": integer(0, 1000000) },
+    help: "entries 名称 [--directory 相对目录] [--limit 数量] [--offset 偏移]\n默认平铺列出内部文件。--directory= 列根层，--directory assets 列该目录直属文件及子目录；续页核对commit。",
   },
   {
     name: "read", arity: [1,2], handler: "capsule",
@@ -15,8 +15,8 @@ export const group = {
   },
   {
     name: "edit", arity: [1,2], handler: "edit",
-    options: { "old-text": text, "new-text": text, "all": flag, "token": version },
-    help: "edit 名称 [内部路径] --old-text 原文 --new-text 新文 --token 当前token [--all]\n省略路径编辑统一详述；显式路径编辑原生文本。完整分页读取同一版本后精确替换。0匹配失败，多匹配需要--all；不自动换token或覆盖外部修改。",
+    options: { "old-text": text, "new-text": text, "all": flag, "token": text, "dry-run": flag, "description": text },
+    help: "edit 名称 [内部路径] --old-text 原文 --new-text 新文 [--all] [--description 简述] (--dry-run [--token 当前token] | --token 当前token)\n省略路径编辑统一详述，可同次更新简述；显式路径编辑原生文本。预演只读，返回范围、token与匹配数；正式替换须提交原token。0匹配不写入，多匹配需要--all。",
   },
   {
     name: "details", arity: [1,1], handler: "details",

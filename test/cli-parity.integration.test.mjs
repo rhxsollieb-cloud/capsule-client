@@ -60,3 +60,37 @@ test("CLI完整文字替换、跨类型详述及位置组织共用真实服务�
   assert.equal((await cli("stat", document.name)).commit, edited.commit);
   assert.ok(await cli("overview"));
 });
+
+test("批量位置预演文件可直接提交，基线变化时保留已审阅的计划", { skip: missingServer, timeout: 30000 }, async (t) => {
+  const { directory, cli } = await serverFixture(t);
+  const a = await cli("create", "书目.md", "--kind", "markdown");
+  const b = await cli("create", "索引.md", "--kind", "markdown");
+  await cli("mount", a.name, "/书目.md");
+  await cli("mount", b.name, "/索引.md");
+  const single = await cli("move", b.name, "--into", "/书目.md", "--dry-run");
+  assert.equal(single.path, "/索引.md");
+  assert.equal(single.to, "/书目.md/索引.md");
+  const operations = join(directory, "operations.json");
+  await writeFile(operations, JSON.stringify([{ operation: "move", path: single.path, to: single.to }]));
+
+  const stale = join(directory, "stale-plan.json");
+  await cli("organize", "--prepare", operations, "--out", stale);
+  const preview = JSON.parse(await readFile(stale, "utf8"));
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.plan.baseline, preview.baseline);
+  assert.equal((await cli("where", b.name)).items[0].path, "/索引.md");
+  await cli("create", "新内容.md", "--kind", "markdown");
+  await assert.rejects(cli("organize", "--plan", stale, "--json-errors"), (error) => JSON.parse(error.stdout).error.code === "VERSION_CONFLICT");
+  assert.equal((await cli("where", b.name)).items[0].path, "/索引.md");
+
+  const fresh = join(directory, "plan.json");
+  await cli("organize", "--prepare", operations, "--fields", "path", "--out", fresh);
+  const result = await cli("organize", "--plan", fresh, "--fields", "path");
+  assert.equal(result.counts.move, 1);
+  assert.equal(result.items[0].from, "/索引.md");
+  const receipt = await cli("organize", "--receipt", result.receipt);
+  assert.equal(receipt.items[0].path, "/书目.md/索引.md");
+  assert.equal((await cli("stat", b.name)).commit, b.commit);
+  assert.deepEqual((await cli("entries", b.name, "--directory=")).items.map(({ path, kind }) => ({ path, kind })),
+    [{ path: "README.md", kind: "file" }]);
+});

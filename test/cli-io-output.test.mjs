@@ -6,6 +6,23 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { readJsonInput, readTextInput } from "../src/commands/input.mjs";
 import { boundedResult, machineError, prepareOutput, printResult } from "../src/commands/output.mjs";
+
+test("裁剪保留组织与清除回执，未分页的移动预演不生成续页游标", async () => {
+  const receipt = "12345678-1234-1234-1234-123456789012";
+  const baseline = "b".repeat(64);
+  const limited = boundedResult({ receipt, baseline, items: [{ path: "/" + "x".repeat(5000) }], nextOffset: null }, 512);
+  assert.equal(limited.receipt, receipt);
+  assert.equal(limited.baseline, baseline);
+  const preview = boundedResult({ dryRun: true, affected: 1, items: [{ path: "/" + "x".repeat(5000) }] }, 512);
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.affected, 1);
+  assert.equal(Object.hasOwn(preview, "nextOffset"), false);
+
+  let stdout = "";
+  const clearance = { name: "书稿.md", token: "entity", mountsToken: "tree" };
+  await printResult(clearance, { output: { fields: ["name"] } }, { stdout: { write: (text) => { stdout += text; } } });
+  assert.deepEqual(JSON.parse(stdout), clearance);
+});
 import { dispatch } from "../src/cli.mjs";
 import { parseArguments } from "../src/commands/arguments.mjs";
 

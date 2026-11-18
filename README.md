@@ -84,12 +84,13 @@ Agent通过CLI调用同一客户端，可直接使用node src/cli.mjs，安装�
 
 帮助按auth/capsules/content/database/mounts/versions/office/skills/system/admin/leases分组；`help 组或命令 --json`返回同一命令声明的机器形式。CLI和图形入口复用客户端操作；命令覆盖、输出预算、搜索和批量组织的语义见[CLI说明](docs/cli-parity.md)。
 
-第一次接触胶囊时，先用`guide`列出说明主题，再用`guide data`了解数据模型、`guide skills`了解胶囊Skill与常规Skill的区别。指南直接按行读取本包维护的[数据规范](docs/data-format.md)和[Skill说明](docs/skills.md)，不联网、不解析连接配置、不初始化工作区。续读使用返回的lines.nextLine，也可用--raw取得所选说明正文；它解释本客户端约定，不代表远端实时协商或某个Skill当前状态。
+第一次接触胶囊时，用`guide`列出主题，`guide data`了解数据模型，`guide cli`查看单项与批量操作，`guide skills`了解胶囊Skill接口。指南离线读取随包文档，按lines.nextLine续读，也可用--raw取得所选说明正文。
 
 ```sh
 node src/cli.mjs ls /
 node src/cli.mjs help mounts --json
 node src/cli.mjs guide
+node src/cli.mjs guide cli --from 1 --limit 40 --raw
 node src/cli.mjs guide skills --from 1 --limit 40 --raw
 node src/cli.mjs overview
 node src/cli.mjs where 产品说明.txt
@@ -176,7 +177,7 @@ node src/cli.mjs stat 产品说明.txt --commit OLD_COMMIT
 
 revert入队后等待终态，返回事件及结果。回撤恢复目标内容与对应元数据，并生成新提交。历史stat没有可写token，新的写入应使用当前stat结果。等待超时保留事件ID，先查询状态再决定后续操作。
 
-位置修改使用position取得的子树token，卸载叶挂载保留胶囊内容；批量位置组织先用organize预演。整cap清除先用removal核对范围与阻止原因，再携实体token和mountsToken提交delete；清除不能通过revert恢复，详见[数据规范](docs/data-format.md#写入组织与回撤)。
+用`move 名称 --into /目标父位置 --dry-run`预演单次移动。正式移动携预演的子树token，卸载叶挂载保留胶囊内容。批量组织从`organize --prepare 操作数组.json --out 计划.json`开始，审阅后用`organize --plan 计划.json`提交。完整示例见[CLI 工作流程](docs/cli-parity.md#常用流程)。整cap清除先用removal核对范围与阻止原因，再携实体token和mountsToken提交delete，详见[数据规范](docs/data-format.md#写入组织与回撤)。
 
 ```sh
 node src/cli.mjs position /工具/求和工具

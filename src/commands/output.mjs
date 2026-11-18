@@ -2,7 +2,10 @@ import { constants } from "node:fs";
 import { access, link, lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-const receiptKeys = ["id", "name", "entry", "path", "commit", "token", "eventId", "operationId", "status", "code", "error", "lines", "total", "nextOffset", "scanned", "returned", "truncated", "budgetLimited", "revision", "previewId", "restoreId", "backupId", "checksum", "confirmationName", "expiresAt", "isolated"];
+const receiptKeys = ["id", "name", "entry", "path", "to", "commit", "token", "mountsToken", "eventId", "operationId",
+  "receipt", "baseline", "counts", "dryRun", "prepared", "affected", "matches", "canApply", "blockedBy",
+  "status", "code", "error", "lines", "total", "nextOffset", "scanned",
+  "returned", "truncated", "budgetLimited", "revision", "previewId", "restoreId", "backupId", "checksum", "confirmationName", "expiresAt", "isolated"];
 const guideKeys = ["guideVersion", "scope", "topic", "title", "source", "next"];
 const preservedKeys = (value) => value.guideVersion === undefined ? receiptKeys : [...receiptKeys, ...guideKeys];
 const select = (value, keys) => Object.fromEntries(keys.filter((key) => Object.hasOwn(value, key)).map((key) => [key, value[key]]));
@@ -11,8 +14,10 @@ const sensitiveCommands = new Set(["user-create", "credential-create", "lease-ac
 
 function project(value, fields) {
   if (!fields || !value || typeof value !== "object" || Array.isArray(value)) return value;
-  const selected = select(value, [...new Set([...preservedKeys(value), ...fields])]);
-  if (Array.isArray(value.items)) selected.items = value.items.map((item) => item && typeof item === "object" ? select(item, [...new Set(["name", "path", ...fields])]) : item);
+  const plan = value.prepared === true ? ["plan"] : [];
+  const selected = select(value, [...new Set([...preservedKeys(value), ...plan, ...fields])]);
+  const rowKeys = [...new Set(["id", "name", "path", "from", "operation", "index", ...fields])];
+  if (Array.isArray(value.items)) selected.items = value.items.map((item) => item && typeof item === "object" ? select(item, rowKeys) : item);
   return selected;
 }
 
@@ -32,7 +37,7 @@ function summary(value, characters) {
 function fitSummary(value, maxChars) {
   const omitted = [];
   value.omittedFields = omitted;
-  for (const key of ["path", "entry", "name", "totalCharacters", "returned", "scanned", "result"]) {
+  for (const key of ["path", "to", "entry", "name", "totalCharacters", "returned", "scanned", "result", "counts"]) {
     if (encoded(value).length <= maxChars) break;
     if (Object.hasOwn(value, key)) { delete value[key]; omitted.push(key); }
   }
@@ -69,13 +74,14 @@ function fitSummary(value, maxChars) {
 export function boundedResult(value, maxChars = 12000, { offset = 0 } = {}) {
   const text = encoded(value);
   if (text.length <= maxChars) return value;
+  const pageable = value && Object.hasOwn(value, "nextOffset");
   if (value && typeof value === "object" && Array.isArray(value.items) && value.items.length) {
     const result = { ...value, items: [...value.items], truncated: true, budgetLimited: true };
     while (result.items.length > 1 && encoded(result).length > maxChars) result.items.pop();
     if (result.items.length < value.items.length) {
       // Search offsets count scanned candidate caps, not emitted records.
       if (value.scanned) return fitSummary({ ...summary(value, text.length), nextOffset: value.scanned.from, retryOffset: value.scanned.from }, maxChars);
-      result.nextOffset = (value.offset ?? offset) + result.items.length;
+      if (pageable) result.nextOffset = (value.offset ?? offset) + result.items.length;
     }
     if (encoded(result).length <= maxChars) return result;
   }
@@ -94,7 +100,7 @@ export function boundedResult(value, maxChars = 12000, { offset = 0 } = {}) {
     }
   }
   const result = summary(value, text.length);
-  if (Array.isArray(value?.items)) result.nextOffset = value.scanned?.from ?? value.offset ?? offset;
+  if (pageable && Array.isArray(value?.items)) result.nextOffset = value.scanned?.from ?? value.offset ?? offset;
   // A large single line cannot be resumed using a line cursor; never pretend it was returned.
   if (result.lines) result.lines = { ...result.lines, nextLine: result.lines.from, truncated: true, budgetLimited: true };
   if (value?.guideVersion !== undefined && result.lines) {

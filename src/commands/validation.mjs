@@ -1,7 +1,7 @@
 import { commandDefinition, kinds } from "./catalog.mjs";
 import { CLI_ENTRY } from "../skills/format.mjs";
 
-export function validateValues(command, values) {
+export function validateValues(command, values, positional = []) {
   if (["read", "details"].includes(command)) {
     if (["from", "around", "anchor"].filter((key) => values[key] !== undefined).length > 1)
       throw new Error(`${command}的--from、--around与--anchor只能选择一项`);
@@ -43,12 +43,25 @@ export function validateValues(command, values) {
       throw new Error("文本入口 --entry 需要同时指定 --body");
     if (sources[0] === "") throw new Error("write 输入不能为空");
   }
-  if (command === "edit" && (!values["old-text"] || values["new-text"] === undefined))
-    throw new Error("edit需要--old-text与--new-text，原文不能为空，新文字可为空");
+  if (command === "edit") {
+    if (!values["old-text"] || values["new-text"] === undefined)
+      throw new Error("edit需要--old-text与--new-text，原文不能为空，新文字可为空");
+    if (values.token === "" || !values["dry-run"] && !values.token)
+      throw new Error("文字写入需要--token，请先预演或读取当前版本");
+    if (values.description !== undefined && (positional.length > 1 || values.description.length > 180))
+      throw new Error("--description仅用于默认详述，最多180字符");
+  }
+  if (command === "move") {
+    if ((positional.length === 2) === (values.into !== undefined) || values.into === "")
+      throw new Error("move请选择目标完整路径或--into目标父路径");
+    if (values["dry-run"] && values.token !== undefined) throw new Error("move预演不携--token");
+    if (!values["dry-run"] && !values.token) throw new Error("移动需要--token，请先预演或读取源子树");
+  }
   if (command === "organize") {
-    if ([values.inspect, values.plan !== undefined, values.receipt !== undefined].filter(Boolean).length !== 1)
-      throw new Error("organize需要--inspect、--plan或--receipt中的一项");
+    if ([values.inspect, values.prepare !== undefined, values.plan !== undefined, values.receipt !== undefined].filter(Boolean).length !== 1)
+      throw new Error("organize需要--inspect、--prepare、--plan或--receipt中的一项");
     if (values["dry-run"] && values.plan === undefined) throw new Error("--dry-run需要--plan");
+    if (values.prepare === "") throw new Error("--prepare不能为空");
     if (values.plan !== undefined && !values.plan) throw new Error("--plan不能为空");
     if (values.receipt !== undefined && !values.receipt) throw new Error("--receipt不能为空");
     if (values.plan !== undefined && !values["dry-run"] && (values.offset || 0) > 0)

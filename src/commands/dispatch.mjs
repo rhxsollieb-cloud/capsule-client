@@ -51,13 +51,17 @@ const handlers = {
   preview: (api, args) => previewOffice(api, args.positional[0], args.positional[1]),
   sync: (api, args) => synchronize(api, args.positional[0]),
   run: (api, args) => runCapsule(api, args.positional[0], args.runtimeArgs, { logCap: args.values["log-cap"] }),
-  edit: (api, args) => editText(api, { name: args.positional[0], entry: args.positional[1], oldText: args.values["old-text"], newText: args.values["new-text"], all: args.values.all, token: args.values.token }),
+  edit: (api, { positional: [name, entry], values }) => editText(api, {
+    name, entry, oldText: values["old-text"], newText: values["new-text"], all: values.all,
+    token: values.token, dryRun: values["dry-run"], description: values.description,
+  }),
 };
 
 export const handlerNames = Object.keys(handlers);
 export function dispatch(args, api, context) {
   if (leaseWriteCommands.has(args.command)) {
-    if (!(args.command === "office-open" && args.values.mode === "view")) api = leasedApi(api, args.values.lease || api.config?.leaseToken);
+    const readOnly = args.command === "office-open" && args.values.mode === "view" || args.command === "edit" && args.values["dry-run"];
+    if (!readOnly) api = leasedApi(api, args.values.lease || api.config?.leaseToken);
     args = { ...args, values: Object.fromEntries(Object.entries(args.values).filter(([key]) => key !== "lease")) };
   }
   return handlers[commandDefinition(args.command).handler](api, args, context);

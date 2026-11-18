@@ -28,8 +28,12 @@ export async function capsuleCommand(api, { command, positional, values }, conte
         input.runtime = { engine: values.engine, entry: entryPath(values.entry) };
       return api.json(api.path(name), "PATCH", input);
     }
-    case "entries":
-      return api.json(api.path(name, "entries", values));
+    case "entries": {
+      const { directory, ...page } = values;
+      return api.json(api.path(name, "entries", {
+        ...page, ...(directory === undefined ? {} : { directory: directory === "" ? "" : entryPath(directory) }),
+      }));
+    }
     case "read":
       return api.json(
         api.path(name, "read", {

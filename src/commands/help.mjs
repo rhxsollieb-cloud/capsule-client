@@ -17,5 +17,5 @@ export function help(topic, { json = false } = {}) {
     ? { group: group.id, title: group.title, commands: group.commands.map((item) => machineCommand(commandDefinition(item.name))) }
     : { name: "capsule", helpVersion: 1, groups: groups.map((item) => ({ id: item.id, title: item.title, commands: item.commands.map((command) => ({ name: command.name, summary: command.help.split("\n")[1] })) })) }, null, 2) + "\n";
   const lines = (group ? [group] : groups).map((item) => `  ${item.id.padEnd(10)} ${item.title}\n    ${item.commands.map((command) => command.name).join("  ")}`);
-  return `用法：capsule 命令 [参数]\n\n${lines.join("\n\n")}\n\n使用 capsule help 组或命令 查看分层帮助；追加--json取得机器声明。\n配置 CAPSULE_SERVER_URL、CAPSULE_TOKEN、CAPSULE_CLIENT_HOME。\n${notes}\n`;
+  return `用法：capsule 命令 [参数]\n\n${lines.join("\n\n")}\n\n使用 capsule help 组或命令 查看分层帮助；追加--json取得机器声明。\n首次连接使用 capsule connection 和 capsule login，capsule me 核对身份。\n${notes}\n`;
 }

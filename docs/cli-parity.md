@@ -2,23 +2,60 @@
 
 本表以VideoSeed的公开CLI帮助、resources分层帮助及业务服务职责为参照，描述当前知识库CLI的覆盖与边界。目标是人在界面与Agent在CLI中使用相同知识库语义，视频创作专用能力另列范围。
 
+## 常用流程
+
+用 `capsule me` 核对身份，按 `capsule help 组或命令` 展开参数。CLI 默认输出 JSON，程序调用可追加 `--json-errors`。正文或 JSON 的文件参数可用 `-` 从标准输入读取，无需额外的转换工具。
+
+查看一本书的根文件和配图目录，分别读取这两级列表：
+
+```sh
+capsule entries 原书.md --directory=
+capsule entries 原书.md --directory assets --limit 30
+```
+
+移动只有一处可见挂载的胶囊时，用全名预演即可。再使用预演返回的 `path` 和子树 `token` 提交，目标末段由父路径与原名称组成。
+
+```sh
+capsule move 词形索引.md --into /知识库.md/术语表.md --dry-run
+capsule move /知识库.md/摄影.md/词形索引.md --into /知识库.md/术语表.md --token TOKEN
+```
+
+多处可见挂载须指定源虚拟路径。预演核对源子树与目标父位置，写权限、目标冲突和原 token 由实际提交校验。大子树可用 `--out` 保留完整范围。
+
+更新导航文字时，先查看精确匹配数和当前版本。预演 `canApply` 为 true 时，用返回的正文 token 提交，只有明确使用 `--all` 才会替换全部匹配。
+
+```sh
+capsule edit 摄影.md --old-text 旧导航 --new-text 新导航 --dry-run
+capsule edit 摄影.md --old-text 旧导航 --new-text 新导航 --token TOKEN
+```
+
+批量移动、挂载和断链把操作写入一个 JSON 数组。管理员用 `--prepare` 取得基线并交给服务端预演，`--out` 保存完整计划，审阅后直接提交该文件。
+
+```sh
+capsule organize --prepare operations.json --out plan.json
+capsule organize --plan plan.json
+capsule organize --receipt RECEIPT
+```
+
+批量整理沿用文件中的基线。读到版本冲突时重新核对范围和计划。相同命令的旧格式、预演和回执分页见下文。
+
 ## 覆盖表
 
 | 能力 | 当前覆盖 | 边界 |
 | --- | --- | --- |
 | 连接与登录 | connection/login/logout/password-change、me/whoami | 前端与CLI共用Authentication和ConnectionStore；隐藏输入或密码文件，不保存密码；人和Agent统一账户密码、默认共享同一配置的12h会话与权限，Agent非交互用--password-file文件或- |
 | cap创建、导入、概要、正文、原件、详述与清除 | create/import/copy/stat/update/read/put/get/details/write-details/removal/delete | import将一个干净目录流式导入全新cap并形成一次初始提交，copy复制独立实体；均不自动挂载。实体token和挂载token分开；清除预览后入队 |
-| 虚拟位置 | ls/mount/position/move/unmount/where | where列出实体全部挂载；移动作用于位置子树，原件不跟随虚拟路径搬动 |
-| 位置批量规划 | organize inspect/dry-run/apply/receipt | 仅mount/move/unmount；顺序规划依赖，同一目录事务提交。没有把多cap内容创建/更新冒充同一原子事务 |
+| 虚拟位置 | ls/mount/position/move/unmount/where | where列出可见挂载；move可从唯一挂载预演，作用于位置子树 |
+| 位置批量规划 | organize inspect/prepare/dry-run/apply/receipt | 支持mount/move/unmount按序计划及同一目录事务提交；内容写入各用cap版本 |
 | 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
 | 缓存复用 | sync、run及Skill注册共享跨进程缓存锁 | 同提交与完整本地对象复用；新版本可增量下载，changed只表示checkout变化。默认等锁30秒，CACHE_BUSY及异常锁见[缓存架构](architecture.md#同步与运行) |
 | 小原件复用 | get、preview及工作台原件共享ETag缓存 | 每次重验当前权限；16MiB单文件、128MiB已登记磁盘LRU，Range和大媒体不整包预取，见[流量说明](content-cache.md) |
 | 渐进读取 | read/details行范围，read及正文型details的around/anchor定位，list/entries/query分页，fields/raw/max-chars/out | 大于1MiB的UTF-8原文按完整行有界读取，JSON预算可能提前分页；核对token与nextLine，单行过大明确413，不把摘录当完整正文 |
 | 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
-| 精确文字修改 | edit | 全部分页需同一原token；0匹配失败，多匹配显式all；默认详述，显式路径通过原件文本接口写回 |
+| 精确文字修改 | edit、edit --dry-run | 核对全部范围与同一版本，预演报告匹配数量；默认详述可随正文更新简述，显式路径通过原件文本接口写回 |
 | 管道输入 | 正文及JSON文件参数接受- | 严格UTF-8，默认最多1MiB，拒绝NUL；二进制原件继续使用流式put/get |
 | 人类和机器帮助 | 按组/命令help及help --json | 同一catalog派生arity/options/help/group/handler；未知原型属性不会作为命令 |
-| 离线规范说明 | guide、guide data、guide skills | 直接按行读取本包维护的规范正文，保留范围及续读；不联网、不初始化工作区，不冒称远端实时协商 |
+| 离线规范说明 | guide、guide data、guide cli、guide skills | 直接按行读取随包文件，保留范围及续读，离线运行 |
 | 本机诊断 | doctor/paths | paths不创建目录、不联网，只显示客户端工作区；不返回或猜测远端原件真实文件系统路径 |
 | 胶囊活动 | activity 名称 | 只读查询全部未过期会话、未完成事件、Office及队列状态；CLI不按tab排除自身，不注册心跳，会话数不是人数，提示不是锁 |
 | 编辑占用 | lease-status/acquire/renew/release及写命令--lease | 与前端共用operations/leases；cap级20秒租约，5秒续期，完成立即释放；原版本token继续校验，见[并发说明](../../capsule-server/docs/concurrency.md) |
@@ -39,11 +76,17 @@ connection保存地址，login隐藏交互输入密码或用--password-file文�
 
 `capsule help`先列能力组，`capsule help content`或`capsule help read`再展开；追加--json返回机器声明。帮助在解析配置与连接服务前完成，不触发业务初始化。
 
-guide无主题先列索引，再按data/skills展开项目模型和Skill宿主约定。正文来自docs/data-format.md与docs/skills.md，不在CLI复制规范。仅白名单主题可读，路径相对模块定位；默认60行，最多200行，按lines.nextLine或next续读。guideVersion标识指南响应格式，scope=client-bundled标明随客户端发布；没有cap token。正文支持raw，--fields仍保留来源与续读。guide不联网、不解析连接配置、不初始化工作区；它不说明远端当前版本或本机Skill是否运行。
+guide无主题先列索引，data、cli、skills分别读取随包的数据规范、CLI流程和Skill约定。仅白名单主题可读，默认60行，最多200行，按lines.nextLine或next续读。guideVersion标识指南响应格式，scope=client-bundled标明随客户端发布。正文支持raw，--fields保留来源与续读。guide在连接配置加载前离线运行。
 
 ## 输入、输出和失败
 
 input.mjs共用文件与标准输入读取，按实际读取字节限制，普通文件预检与流式上限同时执行，UTF-8错误不替换为乱码。文字BOM与换行保留，JSON输入允许BOM。原件put/get仍走流式传输，不受文字输入格式替代。
+
+普通命令用 `--` 结束选项，之后的文字作为位置参数，例如 `capsule stat -- --2026书目.md`。对 `run`，分隔符之后的参数原样传给Skill。整数选项使用十进制。
+
+entries省略--directory时保留旧平铺列表，`--directory=`展开根目录，`--directory assets/子目录`展开相对目录。逐层列表返回kind与commit，续页时核对同一commit，调用服务端已支持的目录接口。
+
+edit先验证分页起止、总行数、承接位置、commit和token，再计算匹配及写入预算。--dry-run返回matches与canApply，原文无匹配、多匹配或替换后的正文超限可从blockedBy区分。预演时可选--token锁定预期版本，正式写入必须传入原token。默认详述可加--description更新简述，两项以同一版本保存。
 
 `import 本地目录 新cap名称 --kind markdown|files|code`通过operations/import归档后流式发送未压缩PAX tar至统一服务端接口，30分钟有界超时，不逐图片提交。markdown目录为README.md和assets/，files为说明.md和assets/，code为含SKILL.md与scripts/cli.mjs的实际Skill目录；导入不执行代码。使用系统tar，Windows可使用系统或Git for Windows附带的tar，不需额外工具链。客户端拒绝链接、特殊文件、运行/凭据目录和不兼容Windows的路径；归档前后核对文件与目录集合、版本签名，变化时在发送前失败。默认最多10000路径、512MiB单文件、2GiB总文件，服务端仍最终校验。目标必须全新，不覆盖、不自动挂载；成功返回标准cap与eventId。结果未知先查目标和原事件，不能重放导入。多个目录分别调用不构成跨cap原子事务。
 
@@ -61,7 +104,16 @@ user-create和credential-create可能只返回一次个人凭据，调用前拒�
 
 search的total为经过path/kind/query筛选的候选cap数，offset/nextOffset同样按候选计数；scanned说明本页完成处理的候选范围，returned为当前输出命中数。全局字节预算不足以完成某cap时，该cap的部分摘录不输出，nextOffset保留该候选以便次页重新检查。每cap匹配和位置展示另有上限，matchesTruncated、positionsTruncated、incomplete及其next建议显示实际覆盖边界。incomplete.next是单cap继续核对建议，不是全局游标。`search --query`只筛概要，不展开正文；`search --text`不扫描SQLite原件、媒体或其它二进制内容。
 
-组织计划形如：
+--prepare接受以下操作数组：
+
+```json
+[
+  {"operation":"mount","name":"书目.md","path":"/书目.md"},
+  {"operation":"move","path":"/正文.txt","to":"/书目.md/正文.txt"}
+]
+```
+
+输出含影响范围和完整plan。按 `--plan 预演文件 --dry-run --offset 偏移` 可续查预演结果，保持原计划与基线。`--plan`也继续接受原始计划对象：
 
 ```json
 {"version":1,"baseline":"TOKEN","operations":[

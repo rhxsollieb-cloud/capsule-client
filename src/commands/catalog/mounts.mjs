@@ -19,9 +19,9 @@ export const group = {
     help: "position 虚拟路径\n取得位置子树与其 token。",
   },
   {
-    name: "move", arity: [2,2], handler: "mounts",
-    options: { "token": version },
-    help: "move 虚拟路径 目标路径 --token 子树token\n原子移动虚拟子树。",
+    name: "move", arity: [1,2], handler: "mounts",
+    options: { "token": text, "into": text, "dry-run": flag },
+    help: "move 胶囊名称或源虚拟路径 --into 目标父路径 [--dry-run | --token 子树token]\nmove 源虚拟路径 目标完整路径 [--dry-run | --token 子树token]\n--into从源推导目标末段；名称必须只有一处可见挂载。预演仅查询源子树及目标父位置并返回token；提交时传入预演token，服务端再核对权限、位置和冲突。",
   },
   {
     name: "unmount", arity: [1,1], handler: "mounts",
@@ -35,8 +35,8 @@ export const group = {
   },
   {
     name: "organize", arity: [0,0], handler: "organization",
-    options: { "inspect": flag, "plan": text, "receipt": text, "dry-run": flag, "limit": integer(1, 100), "offset": integer(0, 1000000) },
-    help: "organize --inspect | --plan JSON文件或- [--dry-run] | --receipt ID或latest [--limit 数量 --offset 偏移]\n取得组织基线，预演或统一提交位置mount/move/unmount计划。提交结果未知先查receipt，不能自动换baseline重放。",
+    options: { "inspect": flag, "prepare": text, "plan": text, "receipt": text, "dry-run": flag, "limit": integer(1, 100), "offset": integer(0, 1000000) },
+    help: "organize --inspect | --prepare 操作数组JSON文件或- | --plan 计划或预演文件或- [--dry-run] | --receipt ID或latest [--limit 数量 --offset 偏移]\n--prepare读取当前基线并预演，用--out保存后可直接交给--plan；正式提交沿用原基线。结果未知先查receipt，不能自动重放。",
   },
   ],
 };

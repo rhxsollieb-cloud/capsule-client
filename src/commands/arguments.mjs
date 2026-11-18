@@ -13,7 +13,7 @@ function parseHelp(rest) {
 function optionValue(key, parameter, definition) {
   if (definition.type === "integer") {
     const number = Number(parameter);
-    if (!Number.isSafeInteger(number) || number < definition.minimum || number > definition.maximum)
+    if (!/^-?\d+$/u.test(parameter) || !Number.isSafeInteger(number) || number < definition.minimum || number > definition.maximum)
       throw new Error(`参数 --${key} 需为 ${definition.minimum}..${definition.maximum} 的有效整数`);
     return number;
   }
@@ -42,20 +42,21 @@ export function parseArguments(argv) {
   if (["help", "--help", "-h"].includes(command)) return parseHelp(rest);
   const definition = commandDefinition(command);
   const definitions = optionDefinitions(command);
-  const separator = rest.indexOf("--");
-  const commandArguments = separator < 0 ? rest : rest.slice(0, separator);
-  if (commandArguments.some((value) => ["--help", "-h"].includes(value)))
-    return { command: "help", topic: command, ...(commandArguments.includes("--json") ? { helpJson: true } : {}) };
   const positional = [];
   const values = {};
   const runtimeArgs = [];
+  let helpRequested = false;
+  let helpJson = false;
   for (let index = 0; index < rest.length; index++) {
     const value = rest[index];
     if (value === "--") {
-      if (command !== "run") throw new Error("只有run支持--后的工具参数");
-      runtimeArgs.push(...rest.slice(index + 1));
+      const remaining = rest.slice(index + 1);
+      if (command === "run") runtimeArgs.push(...remaining);
+      else positional.push(...remaining);
       break;
     }
+    if (value === "--help" || value === "-h") { helpRequested = true; continue; }
+    if (value === "--json") { helpJson = true; continue; }
     if (!value.startsWith("--")) { positional.push(value); continue; }
     const split = value.indexOf("=");
     const key = value.slice(2, split < 0 ? undefined : split);
@@ -72,11 +73,13 @@ export function parseArguments(argv) {
     if (parameter === undefined || (split < 0 && parameter.startsWith("--"))) throw new Error(`参数 --${key} 缺少值`);
     values[key] = optionValue(key, parameter, option);
   }
+  if (helpRequested) return { command: "help", topic: command, ...(helpJson ? { helpJson: true } : {}) };
+  if (helpJson) throw new Error("命令 " + command + " 的--json仅与--help一起使用");
   const [min, max] = definition.arity;
   if (positional.length < min || positional.length > max)
     throw new Error(`命令 ${command} 需要 ${min === max ? min : `${min}–${max}`} 个位置参数`);
   const output = presentation(values, command);
   for (const key of Object.keys(values)) if (Object.hasOwn(presentationOptions, key)) delete values[key];
-  validateValues(command, values);
+  validateValues(command, values, positional);
   return { command, positional, values, runtimeArgs, ...(Object.keys(output).length ? { output } : {}) };
 }

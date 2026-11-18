@@ -11,7 +11,7 @@ export const group = {
   {
     name: "guide", arity: [0, 1], handler: "guide", offline: true,
     options: { from: integer(1, 1000000), limit: integer(1, 200) },
-    help: "guide [data|skills] [--from 行号 --limit 行数]\n离线读取客户端随包说明，无主题返回紧凑索引；默认60行、最多200行，按lines.nextLine或next续读。data为数据规范，skills为Skill格式与本机协作；不查询胶囊、不注册或运行工具。guideVersion是本机指南接口版本，不是远端实时协商结果，token不适用。",
+    help: "guide [data|cli|skills] [--from 行号 --limit 行数]\n离线读取随包说明。data为数据规范，cli为日常及批量操作，skills为Skill格式与本机协作。无主题列索引；默认60行、最多200行，按lines.nextLine或next续读。",
   },
   {
     name: "paths", arity: [0, 0], handler: "paths",

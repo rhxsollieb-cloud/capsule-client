@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { ApiClient } from "./api/client.mjs";
 import { assertNodeVersion } from "./config.mjs";
@@ -52,5 +53,13 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+function invokedDirectly(entry) {
+  if (!entry) return false;
+  if (pathToFileURL(entry).href === import.meta.url) return true;
+  // Node 24.0 lacks import.meta.main. npm's POSIX bin link names the same entry.
+  try { return pathToFileURL(realpathSync(entry)).href === import.meta.url; }
+  catch { return false; }
+}
+
+if (import.meta.main ?? invokedDirectly(process.argv[1]))
   process.exitCode = await main();

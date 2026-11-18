@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -15,6 +15,7 @@ import { boundedResult } from "../src/commands/output.mjs";
 const execute = promisify(execFile);
 const sources = {
   data: new URL("../docs/data-format.md", import.meta.url),
+  cli: new URL("../docs/cli-parity.md", import.meta.url),
   skills: new URL("../docs/skills.md", import.meta.url),
 };
 const textLines = (body) => body === "" ? [] : body.split(/\r\n|\n|\r/);
@@ -33,7 +34,7 @@ async function invoke(args, env = {}) {
   return { ...output, code };
 }
 
-test("guide随命令目录发现，索引与两份原文在非法配置下仍离线且不创建工作区", async (t) => {
+test("guide随命令目录发现，索引与各主题原文在非法配置下仍离线且不创建工作区", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "capsule-guide-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   let calls = 0;
@@ -48,6 +49,7 @@ test("guide随命令目录发现，索引与两份原文在非法配置下仍离
   assert.equal(data.scope, "client-bundled");
   assert.deepEqual(data.topics.map(({ topic, source }) => ({ topic, source })), [
     { topic: "data", source: "docs/data-format.md" },
+    { topic: "cli", source: "docs/cli-parity.md" },
     { topic: "skills", source: "docs/skills.md" },
   ]);
   assert.ok(data.topics.every((topic) => !Object.hasOwn(topic, "body")));
@@ -57,7 +59,7 @@ test("guide随命令目录发现，索引与两份原文在非法配置下仍离
     const page = JSON.parse(result.stdout);
     const lines = textLines(await readFile(file, "utf8"));
     assert.equal(page.topic, topic);
-    assert.equal(page.source, `docs/${topic === "data" ? "data-format" : "skills"}.md`);
+    assert.equal(page.source, "docs/" + basename(fileURLToPath(file)));
     assert.equal(page.body, lines.slice(0, 60).join("\n"));
     assert.equal(page.lines.to, Math.min(60, lines.length));
     assert.equal(Object.hasOwn(page, "token"), false);
