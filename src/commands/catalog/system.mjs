@@ -1,4 +1,4 @@
-import { text, integer } from "./options.mjs";
+import { text, flag, integer } from "./options.mjs";
 
 export const group = {
   id: "system", title: "发现与诊断",
@@ -35,8 +35,8 @@ export const group = {
   },
   {
     name: "search", arity: [0,1], handler: "discovery",
-    options: { "kind": text, "query": text, "text": text, "limit": integer(1, 100), "offset": integer(0, 1000000) },
-    help: "search [虚拟路径=/] [--kind 类别 --query 概要文字 --text 正文文字 --limit 数量 --offset 偏移]\n按虚拟范围去重查询cap，正文匹配返回来源、条目、行号与范围提示；不另建cap内部索引。total/offset/nextOffset按候选cap计数，不是全部命中数；scanned说明本页扫描范围，incomplete说明单cap限额及续查方式。",
+    options: { "kind": text, "query": text, "text": text, "limit": integer(1, 100), "offset": integer(0, 1000000), "scan-all": flag },
+    help: "search [虚拟路径=/] [--kind 类别 --query 概要文字 --text 正文文字 --limit 数量 --offset 偏移 --scan-all]\n按虚拟范围去重查询cap，正文匹配返回来源、条目、行号与范围提示；不另建cap内部索引。total/offset/nextOffset按候选cap计数，不是全部命中数；scanned说明扫描范围，incomplete说明单cap限额及续查方式。--scan-all在页数和输出预算内自动续页，未完成时沿返回的nextOffset继续；预算不足可减小--limit或使用--out。",
   },
   ],
 };

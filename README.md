@@ -187,7 +187,7 @@ node src/cli.mjs stat 产品说明.txt --commit OLD_COMMIT
 
 revert入队后等待终态，返回事件及结果。回撤恢复目标内容与对应元数据，并生成新提交。历史stat没有可写token，新的写入应使用当前stat结果。等待超时保留事件ID，先查询状态再决定后续操作。
 
-管理员用 `rename 旧名称或虚拟路径 新名称 --dry-run` 预演原地改名，再用预演返回的 `--token` 和 `--mounts-token` 提交。改名更新全部挂载及其子路径，保留历史和权限。[改名用法](docs/cli-parity.md#常用流程)
+管理员用 `rename 旧名称或虚拟路径 新名称 --dry-run --out 改名计划.json` 预演原地改名，再用 `rename --plan 改名计划.json` 提交。指定精确挂载和 `--into` 可同时移走整棵子树，其他挂载随 cap 更新名称。用 `edit --prepare` 与 `edit --plan` 按清单更新标题或路径引用。[改名与正文计划用法](docs/cli-parity.md#常用流程)
 
 用`move 名称 --into /目标父位置 --dry-run`预演单次移动。正式移动携预演的子树token，卸载叶挂载保留胶囊内容。批量组织从`organize --prepare 操作数组.json --out 计划.json`开始，审阅后用`organize --plan 计划.json`提交。完整示例见[CLI 工作流程](docs/cli-parity.md#常用流程)。整cap清除先用removal核对范围与阻止原因，再携实体token和mountsToken提交delete，详见[数据规范](docs/data-format.md#写入组织与回撤)。
 

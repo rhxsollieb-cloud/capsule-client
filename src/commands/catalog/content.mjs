@@ -14,9 +14,9 @@ export const group = {
     help: "read 名称 [相对路径] [--from 行号 | --around 行号 | --anchor ID] [--limit 行数]\n单文件直接读取自身，markdown默认README.md、code默认SKILL.md、files/database默认说明.md。around或anchor由服务端定位Markdown安全起点，保留代码块和表格，不逐页下载前文；三种定位方式互斥。支持超过1MiB的UTF-8正文；默认80行、最多10000行，实际JSON预算可能提前分页，按lines.nextLine续读并核对同一token；单行过大明确失败，不把摘录当全文写回。",
   },
   {
-    name: "edit", arity: [1,2], handler: "edit",
-    options: { "old-text": text, "new-text": text, "all": flag, "token": text, "dry-run": flag, "description": text },
-    help: "edit 名称 [内部路径] --old-text 原文 --new-text 新文 [--all] [--description 简述] (--dry-run [--token 当前token] | --token 当前token)\n省略路径编辑统一详述，可同次更新简述；显式路径编辑原生文本。预演只读，返回范围、token与匹配数；正式替换须提交原token。0匹配不写入，多匹配需要--all。",
+    name: "edit", arity: [0,2], handler: "edit",
+    options: { "old-text": text, "new-text": text, "all": flag, "token": text, "dry-run": flag, "description": text, prepare: text, plan: text },
+    help: "edit --prepare 修改清单.json或- [--out 预演.json] | --plan 预演.json或-\n清单每个cap指定一个UTF-8原件及多条字面替换。预演核对匹配次数；提交沿用原版本并逐cap返回回执。\nedit 名称 [内部路径] --old-text 原文 --new-text 新文 [--all] [--description 简述] (--dry-run [--token 当前token] | --token 当前token)\n省略路径编辑统一详述，可同次更新简述；显式路径编辑原生文本。预演只读，返回范围、token与匹配数；正式替换须提交原token。0匹配不写入，多匹配需要--all。",
   },
   {
     name: "details", arity: [1,1], handler: "details",

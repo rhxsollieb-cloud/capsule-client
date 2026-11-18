@@ -27,7 +27,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, io =
     const result = await dispatch(args, config ? new ApiClient(config) : undefined, { stdin: io.stdin || process.stdin, stderr: io.stderr || process.stderr, env });
     await printResult(result, args, io);
     if (args.command === "run") return result.exitCode || (result.logError ? 1 : 0);
-    return args.command === "import-batch" ? result.exitCode || 0 : 0;
+    if (args.command === "import-batch" || args.command === "edit" && args.values.plan !== undefined) return result.exitCode || 0;
+    return 0;
   } catch (error) {
     const token = config?.token || (typeof env.CAPSULE_TOKEN === "string" ? env.CAPSULE_TOKEN : undefined);
     const leaseIndex = cliArgs.findIndex((value) => value === "--lease" || value.startsWith("--lease="));

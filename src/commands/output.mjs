@@ -15,6 +15,8 @@ const sensitiveCommands = new Set(["user-create", "credential-create", "lease-ac
 function project(value, fields) {
   if (!fields || !value || typeof value !== "object" || Array.isArray(value)) return value;
   const plan = value.prepared === true ? ["plan"] : [];
+  if (value.prepared === true && value.plan?.operation === "rename") plan.push("affectedPositions", "blockedReasons");
+  if (typeof value.previousName === "string" && Array.isArray(value.movedPositions)) plan.push("movedPositions");
   const selected = select(value, [...new Set([...preservedKeys(value), ...plan, ...fields])]);
   const rowKeys = [...new Set(["id", "name", "path", "from", "operation", "index", ...fields])];
   if (Array.isArray(value.items)) selected.items = value.items.map((item) => item && typeof item === "object" ? select(item, rowKeys) : item);

@@ -44,6 +44,14 @@ export function validateValues(command, values, positional = []) {
     if (sources[0] === "") throw new Error("write 输入不能为空");
   }
   if (command === "edit") {
+    if (values.prepare !== undefined || values.plan !== undefined) {
+      if ((values.prepare === undefined) === (values.plan === undefined) || !(values.prepare ?? values.plan) || positional.length ||
+          ["old-text", "new-text", "token", "all", "dry-run", "description"].some((key) => values[key] !== undefined) ||
+          (values.prepare !== undefined && values.lease !== undefined))
+        throw new Error("计划方式请选择--prepare或--plan，按帮助提供一个清单或预演文件");
+      return;
+    }
+    if (!positional.length) throw new Error("edit需要胶囊名称、--prepare或--plan");
     if (!values["old-text"] || values["new-text"] === undefined)
       throw new Error("edit需要--old-text与--new-text，原文不能为空，新文字可为空");
     if (values.token === "" || !values["dry-run"] && !values.token)
@@ -58,10 +66,17 @@ export function validateValues(command, values, positional = []) {
     if (!values["dry-run"] && !values.token) throw new Error("移动需要--token，请先预演或读取源子树");
   }
   if (command === "rename") {
-    if (values["dry-run"] && (values.token !== undefined || values["mounts-token"] !== undefined))
-      throw new Error("重命名预演不携--token或--mounts-token");
-    if (!values["dry-run"] && (!values.token || !values["mounts-token"]))
-      throw new Error("重命名需要--token和--mounts-token，请先使用--dry-run");
+    if (values.plan !== undefined) {
+      if (!values.plan || positional.length || ["dry-run", "into", "token", "mounts-token"].some((key) => values[key] !== undefined))
+        throw new Error("rename --plan仅接受预演文件或-，不能与位置参数及其他改名选项混用");
+    } else {
+      if (positional.length !== 2) throw new Error("重命名需要旧名称或虚拟路径和新名称");
+      if (values.into !== undefined && (!values.into || !positional[0].startsWith("/"))) throw new Error("rename --into需要原精确虚拟路径与目标父路径");
+      if (values["dry-run"] && (values.token !== undefined || values["mounts-token"] !== undefined))
+        throw new Error("重命名预演不携--token或--mounts-token");
+      if (!values["dry-run"] && (!values.token || !values["mounts-token"]))
+        throw new Error("重命名需要--token和--mounts-token，请先使用--dry-run");
+    }
   }
   if (command === "organize") {
     if ([values.inspect, values.prepare !== undefined, values.plan !== undefined, values.receipt !== undefined].filter(Boolean).length !== 1)

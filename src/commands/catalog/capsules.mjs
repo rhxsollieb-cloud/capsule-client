@@ -39,9 +39,9 @@ export const group = {
     help: "update 名称 --token 当前token [--description 简介] [--engine node --entry scripts/cli.mjs]\n更新顶层元数据并形成对应提交。code仅允许skill固定Node入口。",
   },
   {
-    name: "rename", arity: [2,2], handler: "management",
-    options: { "dry-run": flag, "token": text, "mounts-token": text },
-    help: "rename 旧名称或虚拟路径 新名称 --dry-run\nrename 旧名称或虚拟路径 新名称 --token 实体token --mounts-token 挂载范围token\n管理员原地重命名，同步更新全部挂载及其子路径，保留内容、历史和权限。先预演核对影响范围和阻止原因，正式执行使用预演返回的两枚token。结果未知时先核对新名称和原事件。",
+    name: "rename", arity: [0,2], handler: "management",
+    options: { "dry-run": flag, "into": text, "plan": text, "token": text, "mounts-token": text },
+    help: "rename 旧名称或虚拟路径 新名称 [--into 目标父路径] --dry-run [--out 预演文件]\nrename --plan 预演文件或-\nrename 旧名称或虚拟路径 新名称 [--into 目标父路径] --token 实体token --mounts-token 挂载范围token\n管理员原地重命名，同步更新全部挂载及其子路径。--into需要原精确虚拟路径，同时把该处子树移到目标父路径。预演可保存并直接提交，沿用原实体和挂载范围版本。结果未知时先核对新名称和原事件。",
   },
   {
     name: "removal", arity: [1,1], handler: "management",

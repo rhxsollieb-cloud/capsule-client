@@ -35,16 +35,16 @@ capsule move 词形索引.md --into /知识库.md/术语表.md --dry-run
 capsule move /知识库.md/摄影.md/词形索引.md --into /知识库.md/术语表.md --token TOKEN
 ```
 
-多处可见挂载须指定源虚拟路径。预演核对源子树与目标父位置，写权限、目标冲突和原 token 由实际提交校验。大子树可用 `--out` 保留完整范围。
+多处可见挂载须指定源虚拟路径。移动带上选定挂载的整棵子树。预演核对源子树与目标父位置，写权限、目标冲突和原 token 由实际提交校验。大子树可用 `--out` 保留完整范围。
 
-管理员可对胶囊原地重命名，源参数支持全名或复制的精确虚拟路径。预演返回 `affectedPositions` 及 `blockedReasons`；核对 `canApply` 后，用原 `token` 和 `mountsToken` 提交。
+管理员可原地重命名，并指定某一处挂载及子树移动。`--into` 要求源为精确虚拟路径，目标父路径为 `/` 时移到顶层。保存预演后可直接提交原计划。
 
 ```sh
-capsule rename /知识库.md/摄影.md 《电影摄影》.md --dry-run
-capsule rename /知识库.md/摄影.md 《电影摄影》.md --token TOKEN --mounts-token MOUNTS_TOKEN
+capsule rename /知识库.md/摄影.md '《电影摄影》.md' --into / --dry-run --out 改名计划.json
+capsule rename --plan 改名计划.json
 ```
 
-重命名同步更新该 cap 的每处挂载及其子路径。范围较大时，预演可用 `--out` 保存完整结果。提交结果未知时先用 `stat 新名称` 和 `event 事件ID` 核对，未取得 ID 时查 `events`。
+预演给出 `canApply`、`affectedPositions` 和 `blockedReasons`。回执给出最终路径、变更映射与 `eventId`。重命名同步更新每处挂载及其子路径，选定挂载的子树移到目标父位置。只改名时可省略 `--into`，源也可用全库唯一名称。双 token 提交仍可用。提交结果未知时先用 `stat 新名称` 和 `event 事件ID` 核对，未取得 ID 时查 `events`。
 
 更新导航文字时，先查看精确匹配数和当前版本。预演 `canApply` 为 true 时，用返回的正文 token 提交，只有明确使用 `--all` 才会替换全部匹配。
 
@@ -52,6 +52,24 @@ capsule rename /知识库.md/摄影.md 《电影摄影》.md --token TOKEN --mou
 capsule edit 摄影.md --old-text 旧导航 --new-text 新导航 --dry-run
 capsule edit 摄影.md --old-text 旧导航 --new-text 新导航 --token TOKEN
 ```
+
+多处已知正文修改用同一清单预演。每份原件的所有修改在同一个提交中保存。
+
+```json
+[
+  {"name":"《电影摄影》.md","entry":"README.md","replacements":[{"oldText":"# 摄影","newText":"# 电影摄影"}]},
+  {"name":"知识库.md","replacements":[{"oldText":"/知识库.md/摄影.md","newText":"/《电影摄影》.md","expected":1}]}
+]
+```
+
+```sh
+capsule edit --prepare 更新清单.json --out 正文计划.json
+capsule edit --plan 正文计划.json --out 正文回执.json
+```
+
+`expected` 默认 `1`。预演按原正文核对匹配数，报告零匹配、数量偏差和重叠。省略 `entry` 时，纯文本使用自身原件，Markdown、代码及文件/数据库目录使用各自默认正文。每个 cap 一个 UTF-8 原件、单文件最多 1MiB，一份清单最多 32 个 cap 和 100 条替换。保留 BOM 与原有换行。纯 CRLF 原件中的多行片段也按 CRLF 应用。正式提交先核对原计划全部版本，再逐 cap 保存。占用、版本冲突或网络结果未知时停在当前项，回执可查 `applied`、`failed`、`unknown` 和 `skipped`。单次写入在没有活跃占用时使用原 token 即可。需要已持有的租约时，可用对应的单 cap 计划提交。
+
+查找范围未知的正文引用时，可用 `capsule search / --text 旧路径 --scan-all --out 搜索结果.json`。自动读取最多 20 个候选页，保留 `scanned`、`incomplete` 和各命中截断信息。到达页数或输出预算时，从 `nextOffset` 续查。输出文件预算约 210 万字符。
 
 批量移动、挂载和断链把操作写入一个 JSON 数组。管理员用 `--prepare` 取得基线并交给服务端预演，`--out` 保存完整计划，审阅后直接提交该文件。
 
@@ -76,7 +94,7 @@ capsule organize --receipt RECEIPT
 | 小原件复用 | get、preview及工作台原件共享ETag缓存 | 每次重验当前权限；16MiB单文件、128MiB已登记磁盘LRU，Range和大媒体不整包预取，见[流量说明](content-cache.md) |
 | 渐进读取 | read/details行范围，read及正文型details的around/anchor定位，list/entries/query分页，fields/raw/max-chars/out | 大于1MiB的UTF-8原文按完整行有界读取，JSON预算可能提前分页；核对token与nextLine，单行过大明确413，不把摘录当完整正文 |
 | 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
-| 精确文字修改 | edit、edit --dry-run | 核对全部范围与同一版本，预演报告匹配数量；默认详述可随正文更新简述，显式路径通过原件文本接口写回 |
+| 精确文字修改 | edit 单处、edit --prepare/--plan 多处 | 预演报告匹配数量，应用时校验原版本并逐 cap 保存，回执记录各项结果 |
 | 管道输入 | 正文及JSON文件参数接受- | 严格UTF-8，默认最多1MiB，拒绝NUL；二进制原件继续使用流式put/get |
 | 人类和机器帮助 | 按组/命令help及help --json | 同一catalog派生arity/options/help/group/handler；未知原型属性不会作为命令 |
 | 离线规范说明 | guide、guide data、guide cli、guide skills | 直接按行读取随包文件，保留范围及续读，离线运行 |

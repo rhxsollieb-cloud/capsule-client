@@ -11,7 +11,7 @@ import { officeSessionCommand } from "./office-session.mjs";
 import { organizationCommand } from "./organization.mjs";
 import { skillCommand } from "./skills.mjs";
 import { structuredWriteCommand } from "./structured-write.mjs";
-import { editText } from "../operations/content.mjs";
+import { editCommand } from "./edit.mjs";
 import { readActivity } from "../operations/activity.mjs";
 import { readTable } from "../database/tables.mjs";
 import { previewOffice } from "../preview/office.mjs";
@@ -53,16 +53,14 @@ const handlers = {
   preview: (api, args) => previewOffice(api, args.positional[0], args.positional[1]),
   sync: (api, args) => synchronize(api, args.positional[0]),
   run: (api, args) => runCapsule(api, args.positional[0], args.runtimeArgs, { logCap: args.values["log-cap"] }),
-  edit: (api, { positional: [name, entry], values }) => editText(api, {
-    name, entry, oldText: values["old-text"], newText: values["new-text"], all: values.all,
-    token: values.token, dryRun: values["dry-run"], description: values.description,
-  }),
+  edit: editCommand,
 };
 
 export const handlerNames = Object.keys(handlers);
 export function dispatch(args, api, context) {
   if (leaseWriteCommands.has(args.command)) {
-    const readOnly = args.command === "office-open" && args.values.mode === "view" || args.command === "edit" && args.values["dry-run"];
+    const readOnly = args.command === "office-open" && args.values.mode === "view" ||
+      args.command === "edit" && (args.values["dry-run"] || args.values.prepare !== undefined);
     if (!readOnly) api = leasedApi(api, args.values.lease || api.config?.leaseToken);
     args = { ...args, values: Object.fromEntries(Object.entries(args.values).filter(([key]) => key !== "lease")) };
   }
