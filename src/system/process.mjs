@@ -46,10 +46,10 @@ export function execute(command, args, options = {}) {
   });
 }
 
-export async function git(args, cwd) {
+export function gitResult(args, cwd, { check = true } = {}) {
   // Only this process may mutate a managed repository while its capsule/cache lock is held.
   // Detached auto-maintenance would outlive fetch and race the following full integrity check.
-  const result = await execute("git", [
+  return execute("git", [
     "-c", "maintenance.auto=false", "-c", "maintenance.autoDetach=false",
     "-c", "gc.auto=0", "-c", "gc.autoDetach=false",
     "-c", "core.autocrlf=false", "-c", "core.eol=lf",
@@ -57,7 +57,9 @@ export async function git(args, cwd) {
     ...args,
   ], {
     cwd,
+    check,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
   });
-  return result.stdout.trim();
 }
+
+export async function git(args, cwd) { return (await gitResult(args, cwd)).stdout.trim(); }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { execute, git } from "../system/process.mjs";
+import { git, gitResult } from "../system/process.mjs";
 import { assertWorkingTree, prepareWorkingCopy, validateCheckoutTree } from "../system/gitWorkingCopy.mjs";
 import { capsuleName } from "../system/paths.mjs";
 import { withCacheLock } from "./lock.mjs";
@@ -57,7 +57,7 @@ async function verifyVersion(repository, commit) {
 }
 
 async function hasCommit(repository, commit) {
-  return (await execute("git", ["cat-file", "-e", commit + "^{commit}"], { cwd: repository, check: false })).exitCode === 0;
+  return (await gitResult(["cat-file", "-e", commit + "^{commit}"], repository, { check: false })).exitCode === 0;
 }
 
 async function importBundle(api, capsule, bundle, target, present, base) {

@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { prepareRun } from "../runtime/snapshot.mjs";
 import { regularEntry } from "../system/paths.mjs";
-import { execute, git } from "../system/process.mjs";
+import { git } from "../system/process.mjs";
 import { loadSkill, CLI_ENTRY, UI_ENTRY } from "./format.mjs";
 import { withCacheLock } from "../cache/lock.mjs";
 
@@ -16,8 +16,8 @@ export async function verifySkillWorkspace(record) {
   }
   if (await git(["rev-parse", "HEAD"], record.snapshot) !== record.commit) throw invalid("本机 Skill 快照版本已变化，请核对后重新注册");
   if (await git(["status", "--porcelain", "--untracked-files=all", "--ignored"], record.snapshot)) throw invalid("本机 Skill 版本快照含未提交改动，请先核对");
-  const listing = await execute("git", ["ls-tree", "-r", "-z", "HEAD"], { cwd: record.snapshot });
-  for (const item of listing.stdout.split("\0").filter(Boolean)) {
+  const listing = await git(["ls-tree", "-r", "-z", "HEAD"], record.snapshot);
+  for (const item of listing.split("\0").filter(Boolean)) {
     const tab = item.indexOf("\t");
     const [mode, type, expected] = item.slice(0, tab).split(" ");
     const entry = item.slice(tab + 1);

@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = resolve(process.argv[2] || join(root, ".local", "releases"));
-const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true }).trim();
-if (git("status", "--porcelain")) throw new Error("先提交客户端源码，再生成精确版本安装包；运行资料须留在忽略目录");
-const commit = git("rev-parse", "HEAD");
-const entries = git("ls-tree", "-r", "--name-only", commit).split("\n");
+const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true });
+if (git("status", "--porcelain").trim()) throw new Error("先提交客户端源码，再生成精确版本安装包；运行资料须留在忽略目录");
+const commit = git("rev-parse", "HEAD").trim();
+const entries = git("ls-tree", "-r", "-z", "--name-only", commit).split("\0").filter(Boolean);
 for (const entry of entries) {
   if (/(^|\/)(?:\.local|node_modules|connection\.sqlite)(?:\/|$)|(^|\/)\.env(?:$|\.(?!example$))|\.(?:pem|key|p12|pfx)$/i.test(entry))
     throw new Error("源码清单含不应分发的运行资料或密钥：" + entry);

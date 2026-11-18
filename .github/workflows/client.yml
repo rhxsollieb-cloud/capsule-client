@@ -4,15 +4,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      run_e2e:
-        description: Run isolated Chromium tests (requires private server checkout access)
-        type: boolean
-        default: false
-      server_ref:
-        description: Compatible capsule-server branch or commit
-        type: string
-        default: codex/initial-development
 
 permissions:
   contents: read
@@ -26,72 +17,47 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
+    env:
+      CLIENT_WORKDIR: ${{ matrix.os == 'windows-latest' && 'Capsule ZIP 测试/capsule-client' || 'Capsule client 测试' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: Capsule client 测试
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: Capsule client 测试/package-lock.json
-      - run: npm ci
+      - name: Extract the release ZIP on Windows
+        if: runner.os == 'Windows'
         working-directory: Capsule client 测试
-      - run: npm run check
-        working-directory: Capsule client 测试
-      # Git sync, independent CLI processes, local UI and cache tests run here.
-      # Cross-repository integration tests report missing capsule-server as skips.
-      - run: npm test
-        working-directory: Capsule client 测试
-  browser:
-    name: Isolated Chromium tests
-    if: github.event_name == 'workflow_dispatch' && inputs.run_e2e
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      SERVER_READ_TOKEN: ${{ secrets.CAPSULE_SERVER_READ_TOKEN }}
-    steps:
-      - name: Require access to the private server source
-        shell: bash
+        shell: pwsh
         run: |
-          if [ -z "$SERVER_READ_TOKEN" ]; then
-            echo 'Browser tests were not executed: CAPSULE_SERVER_READ_TOKEN is required for the private server checkout.' >> "$GITHUB_STEP_SUMMARY"
-            echo '::error::Missing private server checkout access; browser tests were not executed.'
-            exit 1
-          fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: capsule-client
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ github.repository_owner }}/capsule-server
-          ref: ${{ inputs.server_ref }}
-          token: ${{ secrets.CAPSULE_SERVER_READ_TOKEN }}
-          path: capsule-server
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            capsule-client/package-lock.json
-            capsule-server/package-lock.json
+          $output = Join-Path $env:RUNNER_TEMP 'Capsule release 测试'
+          node scripts/package-client.mjs $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archives = @(Get-ChildItem -LiteralPath $output -Filter '*.zip' -File)
+          if ($archives.Count -ne 1) { throw 'Expected one Capsule release ZIP' }
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath (Join-Path $env:GITHUB_WORKSPACE 'Capsule ZIP 测试')
       - run: npm ci
-        working-directory: capsule-server
-      - run: npm ci
-        working-directory: capsule-client
-      - run: npx playwright install --with-deps chromium
-        working-directory: capsule-client
-      - run: npm run test:e2e
-        working-directory: capsule-client
-      - name: Preserve browser failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: chromium-failure-diagnostics
-          path: |
-            capsule-client/.local/playwright/results
-            capsule-client/.local/playwright/report
-          if-no-files-found: ignore
-          retention-days: 7
+        working-directory: ${{ env.CLIENT_WORKDIR }}
+      - name: Verify the native Windows CLI entrypoint
+        if: runner.os == 'Windows'
+        working-directory: ${{ env.CLIENT_WORKDIR }}
+        shell: pwsh
+        run: |
+          $env:NPM_CONFIG_PREFIX = Join-Path $env:RUNNER_TEMP 'Capsule CLI 测试'
+          npm.cmd link --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $shim = Join-Path $env:NPM_CONFIG_PREFIX 'capsule.cmd'
+          $helpJson = & $shim help organize --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $help = $helpJson | ConvertFrom-Json
+          if ($help.name -ne 'organize' -or -not $help.options.prepare) { throw 'capsule.cmd did not return the current CLI help' }
+      - run: npm run check
+        working-directory: ${{ env.CLIENT_WORKDIR }}
+      # Local UI and cache tests use fixtures. Integration with a separate server
+      # and isolated Chromium remain available through the local test commands.
+      - run: npm test
+        working-directory: ${{ env.CLIENT_WORKDIR }}

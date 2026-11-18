@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { identityChangeProof } from "../web/identity-transition.mjs";
 
 test("有草稿时仅允许向同一服务器重新认证同一员工，并携UUID核对证明", () => {
-  const context = { dirty: true, principal: { id: "employee-1", username: "editor01" }, serverUrl: "https://company.example:12090" };
-  const input = { username: "EDITOR01", password: "not-persisted", serverUrl: "https://company.example:12090/" };
+  const context = { dirty: true, principal: { id: "employee-1", username: "editor01" }, serverUrl: "https://company.example" };
+  const input = { username: "EDITOR01", password: "not-persisted", serverUrl: "https://company.example/" };
   assert.deepEqual(identityChangeProof("login", input, context), { expectedUserId: "employee-1" });
   assert.deepEqual(identityChangeProof("login", { ...input, username: "renamed-editor" }, context), { expectedUserId: "employee-1" });
   assert.equal(input.expectedUserId, undefined);

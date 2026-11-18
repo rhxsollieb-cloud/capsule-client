@@ -39,7 +39,12 @@ async function startUi(t, directory) {
   let diagnostic = "";
   child.stderr.setEncoding("utf8").on("data", (chunk) => { diagnostic += chunk; });
   const closed = once(child, "close");
-  t.after(async () => { if (child.exitCode === null) child.kill("SIGTERM"); await closed; });
+  t.after(async () => {
+    try {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+      await closed;
+    } finally { await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+  });
   const ready = await new Promise((resolve, reject) => {
     let text = "";
     const timeout = setTimeout(() => reject(new Error(`界面启动超时：${diagnostic}`)), 5000);
@@ -73,7 +78,7 @@ test("独立报价 CLI 明确要求外部状态目录，精确计算并拒绝旧
 });
 
 test("随机本机界面与独立 CLI 共享 SQLite，旧 UI 写入不能覆盖新报价", async (t) => {
-  const directory = await stateDirectory(t);
+  const directory = await mkdtemp(join(tmpdir(), "quote-skill-test-"));
   const url = await startUi(t, directory);
   assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
   const initial = await (await fetch(url + "api/state")).json();

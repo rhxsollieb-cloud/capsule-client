@@ -47,14 +47,15 @@ export class Connection {
       this.identity = principal;
       content.append(node("p", "connection-identity", `${principal.name} · ${principal.username || ""} · ${{ admin: "管理员", editor: "普通员工" }[principal.role] || principal.role}`));
     }
-    content.append(node("p", "property-note", "人与 Agent 使用同一套用户名密码。连接与登录会话保存在这台电脑，密码不会保存。"));
-    const server = field("知识库服务器", "url", status.serverUrl || "https://150.158.44.59:12090");
-    const office = field("Office 服务", "url", status.officeEditorUrl || "https://150.158.44.59:12091");
+    content.append(node("p", "property-note", "使用管理员提供的知识库与 Office 服务地址。人与 Agent 共用账号和本机登录会话，密码不会保存。"));
+    const server = field("知识库服务器", "url", status.serverUrl);
+    const office = field("Office 服务", "url", status.officeEditorUrl);
     const username = field("用户名", "text", status.principal?.username || this.identity?.username || "", "username");
     const password = field("密码", "password", "", "current-password");
     const form = node("form", "connection-form");
     form.append(server.element, username.element, password.element);
     const advanced = node("details", "connection-advanced");
+    advanced.open = !office.control.value;
     advanced.append(node("summary", "", "Office 连接设置"), office.element);
     form.append(advanced);
     const submit = node("button", "button primary", status.authenticated ? "登录 / 切换账户" : "连接并登录");
