@@ -116,7 +116,7 @@ CLI get、Office预览和工作台小原件共用有界原件缓存，每次条�
 
 list查询cap概要，ls展开虚拟位置，entries列举原生内容；read/details分页展开正文与详述。query用于实际文本或SQLite，preview只读提取docx/xlsx并保留提交和截断信息。按响应中的lines.nextLine或nextOffset续读，不把虚拟路径当原件路径。
 
-大书可用read的--around行号或--anchor精确ID由服务端定位，避免逐页下载前文；与--from互斥，返回范围从实际安全起点开始，代码块和表格不从中间截断。CLI支持安全整数范围内的行号，找不到锚点或结构过大时明确返回诊断。需要配套更新并重启服务端与本机桥接进程。
+大书可用read的--around行号或--anchor精确的`<a id="...">`锚点ID由服务端定位，与--from互斥。Markdown返回范围从目标所在受支持结构的起点开始，limit仍限制单次返回行数；按nextLine续读至目标及结构结束，或交给工作台分段阅读器完成续读。CLI支持安全整数范围内的行号，找不到锚点或结构过大时明确返回诊断，具体结构与复杂度边界见[API契约](../capsule-server/docs/api.md)。需要配套更新并重启服务端与本机桥接进程。
 
 输出默认预算12000字符，可用--fields、--max-chars或--out控制；read/details及guide主题正文支持--raw。正文与JSON文件参数接受`-`作为标准输入。truncated/dataOmitted代表省略，超长单行和搜索候选页的续读限制见[CLI说明](docs/cli-parity.md)。宿主异常可用--json-errors取得机器诊断；Skill非零退出仍返回run回执，不能视为未执行。
 

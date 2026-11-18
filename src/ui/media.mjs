@@ -76,10 +76,8 @@ export async function uploadMedia(request, url, api, maximum) {
   const token = request.headers["if-match"];
   if (typeof token !== "string" || !token) throw uiError("上传需要当前版本");
   const length = request.headers["content-length"];
-  if (length !== undefined && (!/^\d+$/.test(length) || Number(length) > maximum)) {
-    request.resume();
+  if (length !== undefined && (!/^\d+$/.test(length) || Number(length) > maximum))
     throw uiError("上传文件超过上限", 413);
-  }
   const uploads = join(api.config.home, "uploads");
   await mkdir(uploads, { recursive: true });
   const temporary = await mkdtemp(join(uploads, "ui-"));
@@ -96,9 +94,6 @@ export async function uploadMedia(request, url, api, maximum) {
     await handle.close();
     handle = undefined;
     return await api.upload(name, entry, file, token);
-  } catch (error) {
-    request.resume();
-    throw error;
   } finally {
     if (handle) await handle.close();
     await rm(temporary, { recursive: true, force: true });

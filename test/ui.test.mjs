@@ -156,3 +156,30 @@ test("分块上传超限返回413并清理临时文件", async (t) => {
   const files = await readdir(config.home);
   assert.equal(files.includes("test-private-token"), false);
 });
+
+test("超限上传在请求体尚未发完时返回413并要求关闭连接", { timeout: 5000 }, async (t) => {
+  const { app, session, calls, config } = await fixture(t, { maxUploadBytes: 4 });
+  for (const headers of [{ "Content-Length": "20" }, { "Transfer-Encoding": "chunked" }]) {
+    await new Promise((resolve, reject) => {
+      const request = httpRequest(app.url + "/ui/upload?name=原件.jpg", {
+        method: "PUT",
+        headers: { "X-Capsule-Session": session.csrfToken, "If-Match": "current", Connection: "keep-alive", ...headers },
+      }, async (response) => {
+        try {
+          assert.equal(response.statusCode, 413);
+          assert.equal(response.headers.connection, "close");
+          const chunks = [];
+          for await (const chunk of response) chunks.push(chunk);
+          assert.match(JSON.parse(Buffer.concat(chunks)).error, /超过/);
+          resolve();
+        } catch (error) { reject(error); }
+        finally { request.destroy(); }
+      });
+      t.after(() => request.destroy());
+      request.on("error", reject);
+      request.write(Buffer.from([1, 2, 3, 4, 5]));
+    });
+  }
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await readdir(join(config.home, "uploads")), []);
+});

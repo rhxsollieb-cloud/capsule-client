@@ -3,6 +3,7 @@ import test from "node:test";
 import { readSection } from "../web/reader-pages.mjs";
 import { ReaderPageCache, rememberPage, HISTORY_LIMIT } from "../web/reader-cache.mjs";
 import { PagedTextReader } from "../web/reader.mjs";
+import { SectionScanner } from "../web/reader-structure.mjs";
 
 function serving(t, body, { chunk = 240, mutate } = {}) {
   const lines = body.split("\n"), calls = [];
@@ -113,4 +114,66 @@ test("读中原件变化使缓存失效，保留当前段并阻止继续混读",
   assert.equal(reader.pages.items.size, 0);
   assert.equal(reader.record, original);
   await reader.run(async () => assert.fail("旧版本不得继续混读"));
+});
+
+test("同行代码中的表格、注释和锚点保持文字，普通正文按200行分页", async (t) => {
+  serving(t, ['正文中使用 `<table>`、`<!--` 和 `<a id="伪锚点">`。', ...Array(1000).fill("普通正文")].join("\n"));
+  const record = await readSection("行内代码", "README.md");
+  assert.equal(record.lines.to, 200);
+  const scanner = new SectionScanner({ anchor: "伪锚点" });
+  scanner.append('文字 ``<a id="伪锚点">`<table>`` 继续。');
+  assert.equal(scanner.targetLine, undefined);
+  assert.equal(scanner.tableDepth, 0);
+  scanner.append('<a id="伪锚点"></a>');
+  assert.equal(scanner.targetLine, 2);
+  const unmatched = new SectionScanner();
+  unmatched.append('未闭合的 ` 保持文字。');
+  unmatched.append('<table>');
+  assert.equal(unmatched.tableDepth, 1);
+  const adjacent = new SectionScanner({ anchor: "目标" });
+  adjacent.append('<ta`片段`ble>');
+  adjacent.append('<a`片段` id="目标">');
+  adjacent.append('`代码前缀` ```');
+  assert.equal(adjacent.tableDepth, 0);
+  assert.equal(adjacent.targetLine, undefined);
+  assert.equal(adjacent.fence, null);
+});
+
+test("超长空白和未闭合HTML片段在线性预算内扫描，密集反引号明确拒绝", () => {
+  const scanner = new SectionScanner();
+  scanner.append(" ".repeat(1024 * 1024) + "普通文字");
+  scanner.append("<table ".repeat(20000));
+  scanner.append('<a id="'.repeat(20000));
+  assert.equal(scanner.tableDepth, 0);
+  assert.throws(() => new SectionScanner().append("`x".repeat(500000)), (error) => error.code === "TEXT_BLOCK_TOO_LARGE");
+});
+
+test("管道表分隔仅接受两个以上有效列，外侧管道可选且相邻分隔无效", () => {
+  for (const delimiter of ["| --- | :---: |", " --- | --- ", "|---|---", "---|---|"]) {
+    const scanner = new SectionScanner();
+    scanner.append("| 名称 | 数值 |"); scanner.append(delimiter);
+    assert.equal(scanner.pipe, true, delimiter);
+  }
+  for (const delimiter of ["| --- |", "---", "---||---", "|---||---|", "|---| |---|"]) {
+    const scanner = new SectionScanner();
+    scanner.append("| 名称 | 数值 |"); scanner.append(delimiter);
+    assert.equal(scanner.pipe, false, delimiter);
+  }
+});
+
+test("锚点仅匹配首个独立且带引号的id属性，不匹配data-id或其他属性值", () => {
+  for (const line of [
+    '<a data-id="目标"></a>', '<a title=\'id="目标"\'></a>',
+    '<a id="别处" id="目标"></a>', '<a id=目标></a>', '<a-name id="目标"></a>',
+  ]) {
+    const scanner = new SectionScanner({ anchor: "目标" });
+    scanner.append(line);
+    assert.equal(scanner.targetLine, undefined, line);
+  }
+  const scanner = new SectionScanner({ anchor: "目标" });
+  scanner.append('<A data-id="别处" title=\'id="伪"\' ID = "目标"></A>');
+  assert.equal(scanner.targetLine, 1);
+  const ordinary = new SectionScanner();
+  ordinary.append('<table-name>保持普通标签</table-name>');
+  assert.equal(ordinary.tableDepth, 0);
 });

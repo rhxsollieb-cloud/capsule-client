@@ -87,8 +87,16 @@ export function createUiApplication({
       }
       if (url.pathname === "/ui/upload") {
         if (request.method !== "PUT") throw uiError("该接口需要PUT", 405);
-        checkSession(request, csrfToken);
-        return json(response, 200, await uploadMedia(request, url, api, maxUploadBytes));
+        try {
+          checkSession(request, csrfToken);
+          return json(response, 200, await uploadMedia(request, url, api, maxUploadBytes));
+        } catch (error) {
+          if (!request.complete && !response.destroyed) {
+            request.pause();
+            response.setHeader("Connection", "close");
+          }
+          throw error;
+        }
       }
       if (url.pathname === "/ui/content") {
         if (!["GET", "HEAD"].includes(request.method)) throw uiError("该接口需要GET或HEAD", 405);
