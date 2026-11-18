@@ -24,6 +24,7 @@ import { leasedApi } from "../operations/leases.mjs";
 import { authCommand } from "./auth.mjs";
 import { copyCommand } from "./copy.mjs";
 import { importCommand } from "./import.mjs";
+import { importBatchCommand } from "./import-batch.mjs";
 
 const handlers = {
   auth: authCommand,
@@ -33,6 +34,7 @@ const handlers = {
   capsule: capsuleCommand,
   copy: copyCommand,
   import: importCommand,
+  importBatch: importBatchCommand,
   data: dataCommand,
   details: detailsCommand,
   discovery: discoveryCommand,

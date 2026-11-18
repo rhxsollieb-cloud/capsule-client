@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access, link, lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-const receiptKeys = ["id", "name", "entry", "path", "to", "commit", "token", "mountsToken", "eventId", "operationId",
+const receiptKeys = ["id", "name", "targetName", "previousName", "entry", "path", "to", "commit", "token", "mountsToken", "eventId", "operationId",
   "receipt", "baseline", "counts", "dryRun", "prepared", "affected", "matches", "canApply", "blockedBy",
   "status", "code", "error", "lines", "total", "nextOffset", "scanned",
   "returned", "truncated", "budgetLimited", "revision", "previewId", "restoreId", "backupId", "checksum", "confirmationName", "expiresAt", "isolated"];
@@ -37,7 +37,7 @@ function summary(value, characters) {
 function fitSummary(value, maxChars) {
   const omitted = [];
   value.omittedFields = omitted;
-  for (const key of ["path", "to", "entry", "name", "totalCharacters", "returned", "scanned", "result", "counts"]) {
+  for (const key of ["path", "to", "entry", "targetName", "previousName", "name", "totalCharacters", "returned", "scanned", "result", "counts"]) {
     if (encoded(value).length <= maxChars) break;
     if (Object.hasOwn(value, key)) { delete value[key]; omitted.push(key); }
   }

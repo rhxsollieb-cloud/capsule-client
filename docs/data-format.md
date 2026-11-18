@@ -64,6 +64,8 @@ list是实体概要，ls是虚拟位置，entries是cap自身原生文件；它�
 
 正文和详情用read/details读取，用write/write-details保存；二进制原件用get/put流式传输。Office网页编辑经专用会话保存到同一cap版本，编辑器收集变化不等于cap已经提交。不要把DOCX/XLSX二进制当文本写回。
 
+批量导入原文、单文件、SQLite 或带附件的原生目录使用 `import-batch`。每项建立独立 cap，可同时指定虚拟挂载路径。清单格式、预演与失败回执见[CLI 工作流程](cli-parity.md#常用流程)。
+
 query按类别检索实际文本或只读查询SQLite；search按虚拟范围去重查cap，query筛概要，text才扫描实际正文或详述。不新增cap内部查询索引。search的total、offset、nextOffset按候选cap计数，scanned与incomplete说明覆盖；它不扫描Office二进制、媒体内容或SQLite业务单元格。
 
 ## 写入、组织与回撤
@@ -76,7 +78,9 @@ query按类别检索实际文本或只读查询SQLite；search按虚拟范围去
 
 位置move/unmount使用position取得的子树token。整cap清除使用removal预览返回的实体token与mountsToken，两者都要核对。organize用独立baseline预演mount/move/unmount，正式提交只涉及位置事务，续页查receipt，不能重放计划翻页。
 
-revert按目标commit恢复内容和当时元数据，然后生成新提交，保留历史；虚拟位置独立管理。回撤和清除经过持久事件队列，先查原event/eventId的终态再判断结果。网络中断、超时或uncertain不证明未执行，不能自动重提。
+管理员用 `rename 旧名称或虚拟路径 新名称 --dry-run` 查询实体 `token`、挂载范围 `mountsToken` 和路径变更；核对后以 `--token` 和 `--mounts-token` 正式提交。同一 cap 保留数据、历史和权限，全部挂载及其子路径随名称更新。改名成功后使用新名称或新虚拟路径访问。引用旧路径的正文与外部脚本需要另行更新。客户端同步缓存和本机 Skill 登记按名称索引，改名后需使用新名称同步或登记。
+
+revert按目标commit恢复内容和当时元数据，然后生成新提交，保留历史；回撤后仍使用当前名称和挂载。回撤和清除经过持久事件队列，先查原event/eventId的终态再判断结果。网络中断、超时或uncertain先查询实际结果与原事件。
 
 断链只移除当前叶挂载，保留cap及版本；清除删除整个cap、全部挂载和独立Git，不能通过revert找回。清除前核对阻止原因和完整范围；有子挂载、未完事件或活跃Office时可能被拒绝。
 

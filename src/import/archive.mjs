@@ -55,11 +55,16 @@ async function tarCommand(run) {
   throw new Error("未找到系统或Git for Windows附带的tar，请核对Git安装和PATH。");
 }
 
-export async function archiveDirectory(directory, target, kind, { run = execute } = {}) {
+export async function inspectImportDirectory(directory, kind) {
   const root = resolve(directory);
   const info = await lstat(root);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("导入源必须是实际本地目录，不能是链接");
-  const { files, manifest } = await inventory(root, kind);
+  return inventory(root, kind);
+}
+
+export async function archiveDirectory(directory, target, kind, { run = execute } = {}) {
+  const root = resolve(directory);
+  const { files, manifest } = await inspectImportDirectory(root, kind);
   const tar = await tarCommand(run);
   const names = (await readdir(root)).sort();
   await run(tar, ["--format=pax", "--no-xattrs", "-cf", target, "-C", root, "--", ...names], {

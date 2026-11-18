@@ -57,6 +57,12 @@ export function validateValues(command, values, positional = []) {
     if (values["dry-run"] && values.token !== undefined) throw new Error("move预演不携--token");
     if (!values["dry-run"] && !values.token) throw new Error("移动需要--token，请先预演或读取源子树");
   }
+  if (command === "rename") {
+    if (values["dry-run"] && (values.token !== undefined || values["mounts-token"] !== undefined))
+      throw new Error("重命名预演不携--token或--mounts-token");
+    if (!values["dry-run"] && (!values.token || !values["mounts-token"]))
+      throw new Error("重命名需要--token和--mounts-token，请先使用--dry-run");
+  }
   if (command === "organize") {
     if ([values.inspect, values.prepare !== undefined, values.plan !== undefined, values.receipt !== undefined].filter(Boolean).length !== 1)
       throw new Error("organize需要--inspect、--prepare、--plan或--receipt中的一项");

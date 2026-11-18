@@ -13,6 +13,21 @@ capsule entries 原书.md --directory=
 capsule entries 原书.md --directory assets --limit 30
 ```
 
+多篇正文、媒体或原生目录可以通过同一份 `import-batch` 清单导入。先预演，再提交并用 `--out` 保留逐项回执。
+
+```sh
+capsule import-batch 清单.json --dry-run
+capsule import-batch 清单.json --verify --out 导入回执.json
+```
+
+```json
+[
+  {"file":"课程笔记.md","name":"课程.md","path":"/课程.md"},
+  {"file":"示例图.png","name":"示例图.png","kind":"image","path":"/课程.md/示例图.png"},
+  {"directory":"资料目录","name":"资料包","kind":"files","path":"/课程.md/资料包"}
+]
+```
+
 移动只有一处可见挂载的胶囊时，用全名预演即可。再使用预演返回的 `path` 和子树 `token` 提交，目标末段由父路径与原名称组成。
 
 ```sh
@@ -21,6 +36,15 @@ capsule move /知识库.md/摄影.md/词形索引.md --into /知识库.md/术语
 ```
 
 多处可见挂载须指定源虚拟路径。预演核对源子树与目标父位置，写权限、目标冲突和原 token 由实际提交校验。大子树可用 `--out` 保留完整范围。
+
+管理员可对胶囊原地重命名，源参数支持全名或复制的精确虚拟路径。预演返回 `affectedPositions` 及 `blockedReasons`；核对 `canApply` 后，用原 `token` 和 `mountsToken` 提交。
+
+```sh
+capsule rename /知识库.md/摄影.md 《电影摄影》.md --dry-run
+capsule rename /知识库.md/摄影.md 《电影摄影》.md --token TOKEN --mounts-token MOUNTS_TOKEN
+```
+
+重命名同步更新该 cap 的每处挂载及其子路径。范围较大时，预演可用 `--out` 保存完整结果。提交结果未知时先用 `stat 新名称` 和 `event 事件ID` 核对，未取得 ID 时查 `events`。
 
 更新导航文字时，先查看精确匹配数和当前版本。预演 `canApply` 为 true 时，用返回的正文 token 提交，只有明确使用 `--all` 才会替换全部匹配。
 
@@ -44,7 +68,7 @@ capsule organize --receipt RECEIPT
 | 能力 | 当前覆盖 | 边界 |
 | --- | --- | --- |
 | 连接与登录 | connection/login/logout/password-change、me/whoami | 前端与CLI共用Authentication和ConnectionStore；隐藏输入或密码文件，不保存密码；人和Agent统一账户密码、默认共享同一配置的12h会话与权限，Agent非交互用--password-file文件或- |
-| cap创建、导入、概要、正文、原件、详述与清除 | create/import/copy/stat/update/read/put/get/details/write-details/removal/delete | import将一个干净目录流式导入全新cap并形成一次初始提交，copy复制独立实体；均不自动挂载。实体token和挂载token分开；清除预览后入队 |
+| cap创建、导入、改名、概要、正文、原件、详述与清除 | create/import/import-batch/copy/rename/stat/update/read/put/get/details/write-details/removal/delete | import导入一个原生目录，import-batch按清单导入多项并可挂载。改名与清除预览均核对实体token与挂载范围token |
 | 虚拟位置 | ls/mount/position/move/unmount/where | where列出可见挂载；move可从唯一挂载预演，作用于位置子树 |
 | 位置批量规划 | organize inspect/prepare/dry-run/apply/receipt | 支持mount/move/unmount按序计划及同一目录事务提交；内容写入各用cap版本 |
 | 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
@@ -90,6 +114,12 @@ edit先验证分页起止、总行数、承接位置、commit和token，再计�
 
 `import 本地目录 新cap名称 --kind markdown|files|code`通过operations/import归档后流式发送未压缩PAX tar至统一服务端接口，30分钟有界超时，不逐图片提交。markdown目录为README.md和assets/，files为说明.md和assets/，code为含SKILL.md与scripts/cli.mjs的实际Skill目录；导入不执行代码。使用系统tar，Windows可使用系统或Git for Windows附带的tar，不需额外工具链。客户端拒绝链接、特殊文件、运行/凭据目录和不兼容Windows的路径；归档前后核对文件与目录集合、版本签名，变化时在发送前失败。默认最多10000路径、512MiB单文件、2GiB总文件，服务端仍最终校验。目标必须全新，不覆盖、不自动挂载；成功返回标准cap与eventId。结果未知先查目标和原事件，不能重放导入。多个目录分别调用不构成跨cap原子事务。
 
+`import-batch 清单.json` 接受 1–100 项。每项含 `name` 和一个 `file` 或 `directory`，可选 `kind`、`description` 和完整挂载 `path`。`kind` 缺省为 `markdown`；单文件另支持 `text`、`image`、`audio`、`video`、`excel`、`word`、`file` 和单个 SQLite `database` 原件，目录支持 `markdown`、`files` 和 `code`。相对源路径从清单所在目录解析，清单来自 `-` 时从当前目录解析。父挂载须已存在或排在子项之前。单文件 Markdown 直接保存为 README.md；包含附件的 Markdown 使用目录导入保留 `assets/`。
+
+预演检查本机源、挂载父路径及远端可见同名项，正式导入仍由服务端核对名称与权限。`--verify` 通过 HEAD 核对单文件原件的 Git 对象哈希和提交，无需回传正文。目录沿用归档校验，SQLite 沿用服务端完整性校验，两者在回执的 `verification` 中标明。SQLite 导入需符合数据库原件接口规则，存量媒体记录需按该接口要求处理。
+
+各项按序提交。失败会停在当前项并返回非零状态，`--out` 仍保存完整回执，其中包含已创建或挂载的结果、失败步骤及后续未提交项。大文本、媒体和 SQLite 用两步创建并上传，上传失败可能留下已创建的未挂载 cap。先用 `stat`、`where` 或 `event` 核对回执再继续；仅挂载失败时可补做挂载。批次已成功的条目会直接保留。
+
 output.mjs默认JSON不改变小结果结构；字段选择后保留身份与版本/续读，页面预算从末尾减少完整记录并重算游标，正文按整行减少。不能安全分割的结果标记dataOmitted；具备行/候选游标时保留重试起点，不跳过未输出内容。run等结果没有stdout续读游标，不能通过分页取回被省略的输出。必要回执本身过大时整字段省略并记录omittedFields，不切断token或事件ID。read/details与guide主题的--raw输出所选正文，不附JSON或额外换行；超预算报错，不输出半份正文。正文行结束符按读取接口归一化，原件字节应通过get取得。
 
 --out在执行前检查目标不存在，完成后以同目录临时文件和hardlink发布所选字段的完整JSON，不覆盖既有文件、不留半份JSON；它不自动读取剩余页。输出失败不等于业务未执行，应先核对回执。run会尝试把结果保存到client.sqlite，本机日志失败会有logError，不能保证结果已持久化；事前可用--out，不能为取更多stdout重跑有副作用的Skill。
@@ -128,6 +158,6 @@ dry-run和apply使用同一规划器及基线校验，apply的offset必须为0�
 
 整库备份经服务端维护屏障生成catalog、原件、Git和必要恢复资料的一致快照；每cap bundle、本机缓存或单文件下载不能替代它。backup-restore仅生成隔离工作区，生产切换、异机存储、周期调度、自动保留和客户端本机state备份仍由独立运维流程负责，见[备份恢复](../../capsule-server/docs/backups.md)。
 
-copy 源cap 副本名称 --token 源token生成独立原件和新Git历史，不继承挂载或源权限；创建完成后可用mount另行组织。只读源也可复制，无访问源拒绝。未知结果先查询副本及事件，不自动重提；具体见[复制说明](../../capsule-server/docs/copy.md)。尚未实现改名、通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查挂载，不把挂载推断为来源或共享数据。
+copy 源cap 副本名称 --token 源token生成独立原件和新Git历史，不继承挂载或源权限；创建完成后可用mount另行组织。只读源也可复制，无访问源拒绝。未知结果先查询副本及事件，不自动重提；具体见[复制说明](../../capsule-server/docs/copy.md)。尚未实现通用跨cap内容引用登记、来源trace、人工审核/标签系统。where只查挂载，不把挂载推断为来源或共享数据。
 
 视频生成、时间轴组合、混音、模型资产、供应商作业恢复与达芬奇交接属于VideoSeed领域能力，不作为知识库CLI缺口。机器JSON帮助和稳定结构化错误是本项目增强；没有声称VideoSeed已有同名机器接口或所有领域能力均已1:1迁移。

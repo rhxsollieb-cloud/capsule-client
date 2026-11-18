@@ -167,6 +167,8 @@ node src/cli.mjs import /本地/Skill目录 书籍处理 --kind code
 
 Markdown目录必须包含README.md，配图等自有原件位于assets/；files目录使用说明.md与assets/；code目录包含有效SKILL.md和scripts/cli.mjs。导入前准备干净目录，不包含.git、.env、依赖或本机运行材料。客户端检查来源、创建本机临时未压缩PAX归档、流式上传，服务端一次创建独立cap及初始提交；不覆盖已有名称、不自动挂载或运行。需要系统tar（Windows可使用系统或Git附带版本）；最多2GiB、10000文件，单文件512MiB。具体布局与失败恢复见[导入契约](../capsule-server/docs/import.md)，未知结果先查询目标与原事件，不重放导入。
 
+多份 Markdown、普通文件、Office、媒体、SQLite 或原生目录可用 `import-batch 清单.json --dry-run` 预演，正式提交可用 `--verify --out 回执.json` 保留核对结果。清单可同时指定虚拟挂载。格式与失败恢复见[CLI 工作流程](docs/cli-parity.md#常用流程)。
+
 工作台对长文字分页呈现，只渲染当前段及其图片，并支持行号跳转；只在完整载入且满足编辑预算时进入编辑，截断段不能直接保存。Markdown支持经过消毒的原书表格和锚点；附件始终限定当前cap。正文read/details按服务端nextLine续读，大文件本身不限1MiB，单次JSON仍有1MiB预算。全局搜索与query维持原有扫描边界，不能据此宣称已检索全书。
 
 ## 单文件与元数据
@@ -184,6 +186,8 @@ node src/cli.mjs stat 产品说明.txt --commit OLD_COMMIT
 ```
 
 revert入队后等待终态，返回事件及结果。回撤恢复目标内容与对应元数据，并生成新提交。历史stat没有可写token，新的写入应使用当前stat结果。等待超时保留事件ID，先查询状态再决定后续操作。
+
+管理员用 `rename 旧名称或虚拟路径 新名称 --dry-run` 预演原地改名，再用预演返回的 `--token` 和 `--mounts-token` 提交。改名更新全部挂载及其子路径，保留历史和权限。[改名用法](docs/cli-parity.md#常用流程)
 
 用`move 名称 --into /目标父位置 --dry-run`预演单次移动。正式移动携预演的子树token，卸载叶挂载保留胶囊内容。批量组织从`organize --prepare 操作数组.json --out 计划.json`开始，审阅后用`organize --plan 计划.json`提交。完整示例见[CLI 工作流程](docs/cli-parity.md#常用流程)。整cap清除先用removal核对范围与阻止原因，再携实体token和mountsToken提交delete，详见[数据规范](docs/data-format.md#写入组织与回撤)。
 
@@ -217,6 +221,6 @@ check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试
 
 ## 当前边界
 
-运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。整库备份恢复已有管理员接口，恢复仅生成隔离库；cap改名、通用跨cap引用、自动部署切换和周期备份仍未提供，见[覆盖与边界](docs/cli-parity.md)。
+运行入口固定Node.js，可使用已准备的依赖并调用本机工具；客户端不自动安装依赖、不提供独立Python运行器或安全沙箱。Office服务、旧格式与数据库可编辑范围见对应说明。整库备份恢复已有管理员接口，恢复仅生成隔离库；通用跨cap引用、自动部署切换和周期备份仍未提供，见[覆盖与边界](docs/cli-parity.md)。
 
 缓存锁异常、未知本地HEAD或脏内容需要先保留并核对；原PID退出不证明孤儿Git已经停止，客户端不自动删锁抢占。处理入口见[同步与运行](docs/architecture.md#同步与运行)。

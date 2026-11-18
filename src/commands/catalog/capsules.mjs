@@ -1,4 +1,4 @@
-import { text, integer, requiredText, version } from "./options.mjs";
+import { text, flag, integer, requiredText, version } from "./options.mjs";
 
 export const group = {
   id: "capsules", title: "胶囊与身份",
@@ -19,6 +19,11 @@ export const group = {
     help: "import 本地目录 新cap名称 [--kind markdown|files|code --description 简述]\n一次流式归档导入全新cap并形成初始提交，不覆盖名称、不自动挂载。markdown为README.md+assets/，files为说明.md+assets/，code为完整Skill目录；不执行代码。拒绝链接、运行目录和凭据文件。使用系统或Git for Windows附带的tar；未知结果先查目标和eventId，不重放。",
   },
   {
+    name: "import-batch", arity: [1,1], handler: "importBatch",
+    options: { "dry-run": flag, "verify": flag },
+    help: "import-batch 清单JSON文件或- [--dry-run] [--verify]\n清单每项含file或directory、name及可选kind、description、path。按顺序导入新cap并挂载，拒绝覆盖。预演核对本机源及远端可见冲突；--verify通过HEAD核对单文件原件。失败停在当前项并保留逐项回执。",
+  },
+  {
     name: "copy", arity: [2,2], handler: "copy",
     options: { "token": version },
     help: "copy 源名称 副本名称 --token 源token\n复制源cap已保存版本为独立的新cap；只需读取源权限，非管理员可复制只读cap后编辑副本。单文件保留扩展名，不复制历史、权限或挂载，新cap默认edit。结果未知先查目标及eventId，不重放；成功后可另用mount挂载。",
@@ -32,6 +37,11 @@ export const group = {
     name: "update", arity: [1,1], handler: "capsule",
     options: { "description": text, "engine": text, "entry": text, "token": version },
     help: "update 名称 --token 当前token [--description 简介] [--engine node --entry scripts/cli.mjs]\n更新顶层元数据并形成对应提交。code仅允许skill固定Node入口。",
+  },
+  {
+    name: "rename", arity: [2,2], handler: "management",
+    options: { "dry-run": flag, "token": text, "mounts-token": text },
+    help: "rename 旧名称或虚拟路径 新名称 --dry-run\nrename 旧名称或虚拟路径 新名称 --token 实体token --mounts-token 挂载范围token\n管理员原地重命名，同步更新全部挂载及其子路径，保留内容、历史和权限。先预演核对影响范围和阻止原因，正式执行使用预演返回的两枚token。结果未知时先核对新名称和原事件。",
   },
   {
     name: "removal", arity: [1,1], handler: "management",

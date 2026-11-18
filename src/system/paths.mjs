@@ -5,10 +5,11 @@ import { assertWindowsEntries } from "./windowsPaths.mjs";
 export function capsuleName(value) {
   if (
     typeof value !== "string" ||
-    !value.trim() ||
+    !value ||
     value !== value.trim() ||
-    /[\\/\x00-\x1f\x7f]/u.test(value) ||
-    [".", ".."].includes(value) ||
+    value.length > 180 ||
+    /[\\/:*?"<>|\x00-\x1f\x7f]/u.test(value) ||
+    value.startsWith(".") ||
     value.endsWith(".") ||
     /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(value)
   )
