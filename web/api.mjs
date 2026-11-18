@@ -1,3 +1,5 @@
+import { checkedReadPage } from "./read-record.mjs";
+
 let csrfToken;
 const inflight = new Map();
 const sharedReads = new Set(["health", "me", "stat", "entries", "read", "details", "list", "ls", "where", "overview",
@@ -69,10 +71,11 @@ export async function readIdentity() {
   }
 }
 
-export function contentUrl(name, entry, download = false) {
+export function contentUrl(name, entry, download = false, { token } = {}) {
   const query = new URLSearchParams({ name });
   if (entry !== undefined) query.set("entry", entry);
   if (download) query.set("download", "1");
+  else if (token) query.set("version", token);
   return sessionUrl("/ui/content", query);
 }
 
@@ -115,19 +118,23 @@ export async function upload(name, entry, file, token, { lease } = {}) {
   } finally { inflight.clear(); }
 }
 
-async function readPages(operation, name, entry, isCurrent) {
+async function readPages(operation, name, entry, isCurrent, { signal, token } = {}) {
   const parts = [];
   let from = 1;
   let record;
+  let bytes = 0;
+  const encoder = new TextEncoder();
   do {
-    const next = await action(operation, { name, ...(entry === undefined ? {} : { entry }), from, limit: 10000 });
+    signal?.throwIfAborted();
+    const next = await action(operation, { name, ...(entry === undefined ? {} : { entry }), from, limit: 10000 }, { signal });
+    signal?.throwIfAborted();
     if (!isCurrent()) return null;
-    if (record && next.token !== record.token)
-      throw new Error("读取期间内容已变化，请刷新后重试；已有草稿保留。");
+    checkedReadPage(next, { from, token: record?.token ?? token, total: record?.lines.total });
     record = next;
-    parts.push(next.body);
-    if (new TextEncoder().encode(parts.join("\n")).length > 1024 * 1024)
+    bytes += encoder.encode(next.body).length + (parts.length ? 1 : 0);
+    if (bytes > 1024 * 1024)
       throw Object.assign(new Error("全文超过在线编辑提交大小，继续使用分段阅读或下载原件；不会把当前分段保存为整本。"), { status: 413 });
+    parts.push(next.body);
     from = next.lines.nextLine;
   } while (from !== null && from !== undefined);
   const body = parts.join("\n");
@@ -136,5 +143,5 @@ async function readPages(operation, name, entry, isCurrent) {
   return { ...record, body, lines: { from: 1, to: record.lines.total, total: record.lines.total, nextLine: null, truncated: false } };
 }
 
-export function readText(name, entry, isCurrent) { return readPages("read", name, entry, isCurrent); }
-export function readDetails(name, isCurrent) { return readPages("details", name, undefined, isCurrent); }
+export function readText(name, entry, isCurrent, options) { return readPages("read", name, entry, isCurrent, options); }
+export function readDetails(name, isCurrent, options) { return readPages("details", name, undefined, isCurrent, options); }

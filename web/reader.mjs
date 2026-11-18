@@ -2,15 +2,17 @@ import { action, readText } from "./api.mjs";
 import { button, node, replace, releaseMedia } from "./dom.mjs";
 import { renderMarkdown } from "./markdown.mjs";
 import { canEdit } from "./permissions.mjs";
-import { readSection } from "./reader-pages.mjs";
+import { readSection, READER_LINES } from "./reader-pages.mjs";
 import { bindReaderShortcuts } from "./reader-shortcuts.mjs";
+import { checkedReadPage } from "./read-record.mjs";
+import { ReaderPageCache, rememberPage } from "./reader-cache.mjs";
+import { containsReaderAnchor } from "./reader-structure.mjs";
 
 export class PagedTextReader {
   constructor(container, cap, entry, { initial, isCurrent, onError, onOpenEntry, onFullEdit, onRead, markdown }) {
     Object.assign(this, { container, cap, entry, isCurrent, onError, onOpenEntry, onFullEdit, onRead, markdown });
     this.history = [];
-    this.boundaries = new Map();
-    this.anchors = new Map();
+    this.pages = new ReaderPageCache();
     this.wrapper = node("div", "paged-reader");
     this.previous = button("上一段", () => this.back(), "button secondary");
     this.next = button("下一段", () => this.go(this.record.lines.nextLine), "button secondary");
@@ -41,40 +43,70 @@ export class PagedTextReader {
     this.ready = this.go(initial.lines.from, { initial, push: false });
   }
   active() { return !this.destroyed && this.isCurrent(); }
+  canBack() { return Boolean(this.record && this.record.lines.from > 1); }
   controlsInfo() {
-    return { state: "clean", mode: "read", detail: this.range.textContent || "正在读取分段",
+    return { state: this.denied || this.stale ? "error" : "clean", mode: "read", statusText: this.denied ? "无法访问正文" : this.stale ? "阅读版本已变化" : "已保存", detail: this.range.textContent || "正在读取分段",
       helpText: "分段阅读仅加载当前段落和配图。阅读时←上一段、→下一段；输入框和菜单中不翻页。完整载入以编辑会先核对全文、版本及提交大小；分段不会作为整本正文保存。",
-      moreItems: canEdit(this.cap) ? [{ label: "完整载入以编辑", disabled: this.busy, action: () => this.editEntire() }] : [] };
+      moreItems: canEdit(this.cap) ? [{ label: "完整载入以编辑", disabled: this.busy || this.stale, action: () => this.editEntire() }] : [] };
   }
-  updatePermissions(cap) { this.cap = { ...this.cap, permissions: cap.permissions }; }
+  updatePermissions(cap) {
+    this.cap = { ...this.cap, permissions: cap.permissions };
+    if (cap.permissions?.read === false) this.clearAccess(new Error("当前身份已无法读取此正文，请重新选择或检查权限。"));
+    else if (this.denied && !this.busy && cap.permissions?.read === true) { this.denied = false; void this.go(1, { push: false }); }
+  }
+  clearAccess(error) {
+    this.controller?.abort(); this.denied = true;
+    this.pages.clear(); this.history.length = 0; this.record = null;
+    this.cap = { ...this.cap, permissions: { read: false, edit: false, manage: false } };
+    releaseMedia(this.body, { images: true });
+    replace(this.body, node("p", "error-message", "当前身份无法访问此正文。"));
+    this.note.textContent = error.message; this.range.textContent = "无法访问正文"; this.line.value = "";
+    this.controls();
+  }
   controls() {
-    this.previous.disabled = this.busy || !this.history.length;
-    this.next.disabled = this.busy || !this.record?.lines.nextLine;
-    this.line.disabled = this.busy;
+    const blocked = this.busy || this.denied || this.stale;
+    this.previous.disabled = blocked || !this.canBack();
+    this.next.disabled = blocked || !this.record?.lines.nextLine;
+    this.line.disabled = blocked;
   }
   async run(operation) {
-    if (this.busy || !this.active()) return;
+    if (this.busy || this.denied || this.stale || !this.active()) return;
     this.busy = true; this.controls(); this.note.textContent = "正在读取…";
     this.controller = new AbortController();
     try { await operation(this.controller.signal); }
-    catch (error) { if (this.active() && error.name !== "AbortError") { this.note.textContent = error.message; this.onError(error); } }
+    catch (error) {
+      if (this.active() && error.name !== "AbortError") {
+        if ([401, 403, 404].includes(error.status) && error.code !== "TEXT_ANCHOR_NOT_FOUND") this.clearAccess(error);
+        if (error.code === "VERSION_CONFLICT" || error.code === "TEXT_CHANGED") { this.pages.clear(); this.stale = true; }
+        this.note.textContent = error.message; this.onError(error);
+      }
+    }
     finally { this.busy = false; if (this.active()) { this.controls(); this.onRead?.(this.record); } }
   }
-  async page(from, signal, initial) {
-    const record = await readSection(this.cap.name, this.entry, { from, token: this.cap.token, signal, initial });
-    this.boundaries.set(from, record.lines.to);
-    const lines = record.body.split("\n");
-    for (let index = 0; index < lines.length; index++) for (const match of lines[index].matchAll(/<a\b[^>]*\bid=["']([^"']+)["'][^>]*>/gi))
-      this.anchors.set(match[1], from + index);
+  async verify(signal) {
+    const current = await action("stat", { name: this.cap.name }, { signal });
+    signal?.throwIfAborted();
+    if (current.token !== this.cap.token || current.commit !== this.cap.commit)
+      throw Object.assign(new Error("阅读版本已变化，请检查更新后重新打开；不会展示旧缓存为新内容。"), { status: 409, code: "VERSION_CONFLICT" });
+    if (current.permissions?.read === false) throw Object.assign(new Error("当前身份无法读取此正文。"), { status: 403 });
+    this.cap = { ...this.cap, permissions: current.permissions };
+  }
+  async page(from, signal, initial, { to, minimumLine = from, anchor, verified = false } = {}) {
+    const cached = this.pages.find((record) => record.lines.from === from && (to === undefined || record.lines.to === to)
+      && record.lines.to >= minimumLine && (!anchor || containsReaderAnchor(record.body, anchor)));
+    if (cached) { if (!verified) await this.verify(signal); return cached; }
+    const record = await readSection(this.cap.name, this.entry, { from, token: this.cap.token, signal, initial, to, minimumLine, anchor, markdown: this.markdown });
+    if (record.commit !== this.cap.commit) throw Object.assign(new Error("正文提交已变化，请检查更新后重新打开。"), { status: 409, code: "VERSION_CONFLICT" });
+    signal?.throwIfAborted(); this.pages.put(record);
     return record;
   }
   display(record, { push = true } = {}) {
     if (!this.active()) return;
-    if (push && this.record) this.history.push(this.record.lines.from);
+    if (push) rememberPage(this.history, this.record, record);
     this.record = record;
     releaseMedia(this.body, { images: true });
     replace(this.body, this.markdown ? renderMarkdown(record.body, {
-      name: this.cap.name, entry: this.entry || "README.md", onOpenEntry: this.onOpenEntry,
+      name: this.cap.name, entry: this.entry || "README.md", token: record.token, onOpenEntry: this.onOpenEntry,
       onAnchor: (id) => this.seekAnchor(id),
     }) : node("pre", "text-reading", record.body));
     this.range.textContent = `第 ${record.lines.from}–${record.lines.to} 行 / 共 ${record.lines.total} 行`;
@@ -88,24 +120,40 @@ export class PagedTextReader {
     return this.run(async (signal) => this.display(await this.page(from, signal, initial), { push }));
   }
   back() {
-    if (this.busy || !this.history.length) return;
-    const from = this.history.at(-1);
+    if (this.busy || !this.canBack()) return;
     return this.run(async (signal) => {
-      const record = await this.page(from, signal);
+      const end = this.record.lines.from - 1;
+      const previous = this.history.at(-1);
+      let record;
+      if (previous?.to === end) record = await this.page(previous.from, signal, undefined, { to: end });
+      else {
+        const cached = this.pages.before(this.record.lines.from);
+        if (cached) { await this.verify(signal); record = cached; }
+        else {
+          const around = Math.max(1, this.record.lines.from - READER_LINES);
+          const located = await this.locate({ around }, signal);
+          record = await this.page(located.lines.from, signal, located, { to: end, verified: true });
+        }
+      }
       if (!this.active()) return;
       this.display(record, { push: false });
-      this.history.pop();
+      if (previous?.to === end) this.history.pop(); else this.history.length = 0;
     });
   }
+  async locate(position, signal) {
+    const record = checkedReadPage(await action("read", { name: this.cap.name, ...(this.entry === undefined ? {} : { entry: this.entry }), ...position, limit: 1 }, { signal }), { token: this.cap.token, total: this.record?.lines.total });
+    signal?.throwIfAborted();
+    if (record.commit !== this.cap.commit) throw Object.assign(new Error("定位期间正文提交已变化，请检查更新后重新打开。"), { status: 409, code: "VERSION_CONFLICT" });
+    if (position.around !== undefined && record.lines.from > position.around)
+      throw Object.assign(new Error("正文定位响应越过了目标行，未显示错误段落。"), { status: 502, code: "INVALID_RESPONSE" });
+    return record;
+  }
   async sectionFor(line, signal) {
-    let from = 1;
-    for (const [start, end] of this.boundaries) if (start <= line && end >= line) return this.page(start, signal);
-    for (const [, end] of this.boundaries) if (end < line) from = Math.max(from, end + 1);
-    for (;;) {
-      const record = await this.page(from, signal);
-      if (record.lines.to >= line || !record.lines.nextLine) return record;
-      from = record.lines.nextLine;
-    }
+    const cached = this.pages.containing(line);
+    if (cached) { await this.verify(signal); return cached; }
+    const around = line === this.record.lines.total ? Math.max(1, line - READER_LINES) : line;
+    const located = await this.locate({ around }, signal);
+    return this.page(located.lines.from, signal, located, { minimumLine: line, verified: true });
   }
   seekLine(line) {
     if (!Number.isSafeInteger(line) || line < 1 || line > this.record?.lines.total) { this.note.textContent = "请输入正文范围内的行号。"; return; }
@@ -113,33 +161,22 @@ export class PagedTextReader {
   }
   seekAnchor(id) {
     return this.run(async (signal) => {
-      let line = this.anchors.get(id);
-      let from = 1;
-      while (!line) {
-        this.note.textContent = "正在定位目录…";
-        const record = await action("read", { name: this.cap.name, entry: this.entry, from, limit: 1000 }, { signal });
-        if (record.token !== this.cap.token) throw new Error("目录定位期间版本已变化，请检查更新后重新打开。");
-        const lines = record.body.split("\n");
-        for (let index = 0; index < lines.length; index++) for (const match of lines[index].matchAll(/<a\b[^>]*\bid=["']([^"']+)["'][^>]*>/gi))
-          this.anchors.set(match[1], from + index);
-        line = this.anchors.get(id);
-        if (!record.lines.nextLine) break;
-        from = record.lines.nextLine;
-      }
-      if (!line) { this.note.textContent = `未找到目录锚点 ${id}，可按行号浏览全文。`; return; }
-      this.display(await this.sectionFor(line, signal));
+      this.note.textContent = "正在定位目录…";
+      const located = await this.locate({ anchor: id }, signal);
+      this.display(await this.page(located.lines.from, signal, located, { anchor: id, verified: true }));
       [...this.body.querySelectorAll("[id]")].find((element) => element.id === id)?.scrollIntoView({ block: "start" });
     });
   }
   editEntire() {
-    return this.run(async () => {
-      const record = await readText(this.cap.name, this.entry, () => this.active());
+    return this.run(async (signal) => {
+      const record = await readText(this.cap.name, this.entry, () => this.active(), { signal, token: this.cap.token });
       if (record && this.active()) await this.onFullEdit(record);
     });
   }
   destroy() {
     this.destroyed = true;
     this.controller?.abort();
+    this.pages.clear(); this.history.length = 0; this.record = null;
     this.unbindShortcuts();
     this.controlsResize.disconnect();
     releaseMedia(this.body, { images: true });

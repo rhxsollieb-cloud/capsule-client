@@ -48,7 +48,8 @@ export class InspectorDetails {
     } else {
       this.note.textContent = record.lines.nextLine ? `已读取 ${record.lines.to} / ${record.lines.total} 行` : this.metadata ? "" : "详述即正文，不另存副本";
     }
-    const context = directoryKinds.has(record.kind) ? { name: record.name, entry: record.source.entry } : {};
+    const context = directoryKinds.has(record.kind) ? { name: record.name, entry: record.source.entry,
+      token: local?.dirty ? local.baseToken : record.token } : {};
     const key = JSON.stringify(context);
     if (force || body !== this.renderedBody || key !== this.renderedContext) {
       replace(this.body, this.renderBody(body, context));

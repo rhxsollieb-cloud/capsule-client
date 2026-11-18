@@ -10,8 +10,8 @@ export const group = {
   },
   {
     name: "read", arity: [1,2], handler: "capsule",
-    options: { "from": integer(1, 1000000), "limit": integer(1, 10000) },
-    help: "read 名称 [相对路径] [--from 行号] [--limit 行数]\n单文件直接读取自身，markdown默认README.md、code默认SKILL.md、files/database默认说明.md。支持超过1MiB的UTF-8正文；默认80行、最多10000行，实际JSON预算可能提前分页，按lines.nextLine续读并核对同一token；单行过大明确失败，不把摘录当全文写回。",
+    options: { "from": integer(1, Number.MAX_SAFE_INTEGER), "around": integer(1, Number.MAX_SAFE_INTEGER), "anchor": text, "limit": integer(1, 10000) },
+    help: "read 名称 [相对路径] [--from 行号 | --around 行号 | --anchor ID] [--limit 行数]\n单文件直接读取自身，markdown默认README.md、code默认SKILL.md、files/database默认说明.md。around或anchor由服务端定位Markdown安全起点，保留代码块和表格，不逐页下载前文；三种定位方式互斥。支持超过1MiB的UTF-8正文；默认80行、最多10000行，实际JSON预算可能提前分页，按lines.nextLine续读并核对同一token；单行过大明确失败，不把摘录当全文写回。",
   },
   {
     name: "edit", arity: [1,2], handler: "edit",
@@ -20,8 +20,8 @@ export const group = {
   },
   {
     name: "details", arity: [1,1], handler: "details",
-    options: { "from": integer(1, 1000000), "limit": integer(1, 10000) },
-    help: "details 名称 [--from 行号 --limit 行数]\n分页读取cap详述及来源。文字类复用正文，其他目录复用说明.md，单文件媒体使用顶层元数据详述。",
+    options: { "from": integer(1, Number.MAX_SAFE_INTEGER), "around": integer(1, Number.MAX_SAFE_INTEGER), "anchor": text, "limit": integer(1, 10000) },
+    help: "details 名称 [--from 行号 | --around 行号 | --anchor ID] [--limit 行数]\n分页读取cap详述及来源。文字类复用正文，其他目录复用说明.md，可由around/anchor定位；单文件媒体使用顶层元数据详述，仅支持from/limit。",
   },
   {
     name: "write-details", arity: [1,1], handler: "details",

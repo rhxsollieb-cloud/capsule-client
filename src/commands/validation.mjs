@@ -2,6 +2,11 @@ import { commandDefinition, kinds } from "./catalog.mjs";
 import { CLI_ENTRY } from "../skills/format.mjs";
 
 export function validateValues(command, values) {
+  if (["read", "details"].includes(command)) {
+    if (["from", "around", "anchor"].filter((key) => values[key] !== undefined).length > 1)
+      throw new Error(`${command}的--from、--around与--anchor只能选择一项`);
+    if (values.anchor !== undefined && !values.anchor) throw new Error("--anchor不能为空");
+  }
   if (values.kind !== undefined && !kinds.includes(values.kind))
     throw new Error("类别需为 " + kinds.join("、"));
   for (const [key, option] of Object.entries(commandDefinition(command).options))

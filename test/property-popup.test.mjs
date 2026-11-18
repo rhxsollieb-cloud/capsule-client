@@ -207,7 +207,7 @@ test("详述默认阅读Markdown，编辑与预览共用原文草稿并以原tok
 test("目录正文渲染保留本cap附件上下文，单文件详述不派生目录", async (t) => {
   const { inspector, renders } = fixture(t, (input) => record(input.name, { kind: input.name.endsWith(".md") ? "markdown" : "text" }));
   await inspector.open({ name: "目录.md" });
-  assert.deepEqual(renders.at(-1).context, { name: "目录.md", entry: "README.md" });
+  assert.deepEqual(renders.at(-1).context, { name: "目录.md", entry: "README.md", token: "目录.md-token" });
   await inspector.open({ name: "正文.txt" });
   assert.deepEqual(renders.at(-1).context, {});
 });

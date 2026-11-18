@@ -1,6 +1,7 @@
 import { action, readDetails } from "./api.mjs";
 import { markdownOutline } from "./markdown.mjs";
 import { PagedTextReader } from "./reader.mjs";
+import { checkedReadPage } from "./read-record.mjs";
 
 function updateCap(workspace, record) {
   workspace.cap = { ...workspace.cap, description: record.description ?? workspace.cap.description,
@@ -20,11 +21,12 @@ function openEditor(workspace, entry, record) {
   workspace.chrome();
 }
 
-export async function loadWorkspaceText(workspace, { cap, entry, isCurrent, background }) {
-  let record = workspace.detailsMode ? await readDetails(cap.name, isCurrent)
-    : await action("read", { name: cap.name, ...(entry === undefined ? {} : { entry }), from: 1, limit: 240 });
+export async function loadWorkspaceText(workspace, { cap, entry, isCurrent, background, signal }) {
+  let record = workspace.detailsMode ? await readDetails(cap.name, isCurrent, { signal })
+    : await action("read", { name: cap.name, ...(entry === undefined ? {} : { entry }), from: 1, limit: 240 }, { signal });
   if (!record || !isCurrent()) return;
   if (background && workspace.editor.hasDirty(cap.name, entry)) { workspace.editor.markRemote(cap.name, entry); return; }
+  checkedReadPage(record, { from: 1 });
   updateCap(workspace, record);
   const draft = workspace.editor.drafts.get(workspace.editor.key(cap.name, entry));
   if (draft?.dirty || draft?.saving) {

@@ -2,6 +2,7 @@ import { markdownit, DOMPurify } from "./vendor/markdown.mjs";
 import { contentUrl } from "./api.mjs";
 import { node } from "./dom.mjs";
 import { capsuleEntry, embeddedKind } from "./markdown-paths.mjs";
+import { exceedsMarkdownBudget, exceedsMarkdownBytes } from "./markdown-budget.mjs";
 
 const parser = markdownit({ html: true, linkify: false, typographer: false });
 const safeHtml = (source) => DOMPurify.sanitize(source, {
@@ -30,9 +31,13 @@ function headings(tokens) {
   return outline;
 }
 
-export function markdownOutline(body) { return headings(parser.parse(body, {})); }
+export function markdownOutline(body) {
+  if (exceedsMarkdownBytes(body)) return [];
+  const tokens = parser.parse(body, {});
+  return exceedsMarkdownBudget(tokens) ? [] : headings(tokens);
+}
 
-function mediaAttachment(placeholder, { name, entry }) {
+function mediaAttachment(placeholder, { name, entry, token }) {
   const source = placeholder.dataset.capMedia;
   const path = name ? capsuleEntry(source, entry) : null;
   const kind = path && embeddedKind(path);
@@ -49,9 +54,13 @@ function mediaAttachment(placeholder, { name, entry }) {
     media.controls = true;
     media.preload = "metadata";
   }
-  media.src = contentUrl(name, path);
+  media.src = contentUrl(name, path, false, { token });
   const figure = node("span", "markdown-media-frame");
   const caption = node("span", "markdown-media-caption", placeholder.textContent);
+  media.addEventListener("error", () => {
+    caption.textContent = `${placeholder.textContent}（附件暂时无法加载，请刷新内容后重试）`;
+    caption.classList.add("error-message");
+  });
   figure.append(media, caption);
   placeholder.replaceWith(figure);
 }
@@ -66,9 +75,11 @@ function localLink(link, { name, entry, onOpenEntry, onAnchor }, article) {
   if (href.startsWith("#")) {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      const target = [...article.querySelectorAll("[id]")].find((element) => element.id === href.slice(1));
+      let id = href.slice(1);
+      try { id = decodeURIComponent(id); } catch { /* Invalid escapes remain literal anchor IDs. */ }
+      const target = [...article.querySelectorAll("[id]")].find((element) => element.id === id);
       if (target) target.scrollIntoView({ block: "start" });
-      else onAnchor?.(href.slice(1));
+      else onAnchor?.(id);
     });
     return;
   }
@@ -79,9 +90,15 @@ function localLink(link, { name, entry, onOpenEntry, onAnchor }, article) {
 }
 
 export function renderMarkdown(body, context = {}) {
-  const tokens = parser.parse(body, {});
-  headings(tokens);
+  const tokens = exceedsMarkdownBytes(body) ? null : parser.parse(body, {});
   const article = node("article", "markdown-body");
+  if (!tokens || exceedsMarkdownBudget(tokens)) {
+    const message = node("p", "markdown-limit", "此段结构过于复杂，已停止渲染。请缩小阅读范围，或下载原件查看。");
+    message.setAttribute("role", "status");
+    article.append(message);
+    return article;
+  }
+  headings(tokens);
   const fragment = DOMPurify.sanitize(parser.renderer.render(tokens, parser.options, {}), {
     RETURN_DOM_FRAGMENT: true,
     USE_PROFILES: { html: true },

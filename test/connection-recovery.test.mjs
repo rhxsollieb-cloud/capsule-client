@@ -43,7 +43,7 @@ test("左侧选择遇旧本机会话后，重连恢复原文件并读取正文�
     if (init.headers["X-Capsule-Session"] !== expected)
       return Response.json({ error: "本地会话已失效，请刷新界面" }, { status: 403 });
     if (input.action === "stat") return Response.json(cap);
-    if (input.action === "read") return Response.json({ ...cap, body: "正文已经恢复", lines: { nextLine: null } });
+    if (input.action === "read") return Response.json({ ...cap, body: "正文已经恢复", lines: { from: 1, to: 1, total: 1, nextLine: null, truncated: false } });
     assert.fail("恢复不能执行业务写入：" + input.action);
   });
   await initialize();

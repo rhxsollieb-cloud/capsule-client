@@ -32,8 +32,8 @@ const allowed = {
   "organize-receipt": ["receipt", "limit", "offset"],
   stat: ["name", "commit"],
   entries: ["name", "limit", "offset"],
-  read: ["name", "entry", "from", "limit"],
-  details: ["name", "from", "limit"],
+  read: ["name", "entry", "from", "around", "anchor", "limit"],
+  details: ["name", "from", "around", "anchor", "limit"],
   "save-details": ["name", "body", "description", "token"],
   preview: ["name", "entry"],
   "office-status": [],
@@ -82,7 +82,7 @@ function validatedPath(value, validator) {
   }
 }
 
-export async function performAction(api, input, { skills, lease } = {}) {
+export async function performAction(api, input, { skills, lease, signal } = {}) {
   if (typeof input.action === "string" && ["lease-status", "lease-acquire", "lease-renew", "lease-release"].includes(input.action))
     return leaseOperation(api, input.action, { ...Object.fromEntries(Object.entries(input).filter(([key]) => key !== "action")), ...(["lease-renew", "lease-release"].includes(input.action) && lease ? { lease } : {}) });
   if (protectedActions.has(input.action) && !(input.action === "office-open" && input.mode === "view")) api = leasedApi(api, lease);
@@ -147,7 +147,7 @@ export async function performAction(api, input, { skills, lease } = {}) {
   delete value.name;
   if (action === "stat") return api.json(api.path(name, "", value));
   if (["entries", "read", "history", "details"].includes(action))
-    return api.json(api.path(name, action, value));
+    return api.json(api.path(name, action, value), "GET", undefined, {}, { signal });
   if (action === "save-details") return api.json(api.path(name, "details"), "PUT", value);
   if (action === "update") return api.json(api.path(name), "PATCH", value);
   if (action === "save") return api.json(api.path(name, "write"), "POST", value);

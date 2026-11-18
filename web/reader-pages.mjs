@@ -1,62 +1,50 @@
 import { action } from "./api.mjs";
+import { checkedReadPage } from "./read-record.mjs";
+import { READER_LIMITS, SectionScanner } from "./reader-structure.mjs";
 
 export const READER_LINES = 200;
-const MAX_SECTION_BYTES = 2 * 1024 * 1024;
+const invalid = (message) => Object.assign(new Error(`正文分页响应无效：${message}`), { status: 502, code: "INVALID_RESPONSE" });
 
-// Break at paragraph boundaries without cutting a fenced block or raw table.
-export function sectionEnd(body, { complete = false, goal = READER_LINES } = {}) {
-  const lines = body.split("\n");
-  if (complete) return lines.length;
-  let fence = null;
-  let tableDepth = 0;
-  const boundaries = [];
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-    if (marker) {
-      if (!fence) fence = { character: marker[1][0], length: marker[1].length };
-      else if (marker[1][0] === fence.character && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
-    }
-    if (!fence) {
-      tableDepth += (line.match(/<table\b[^>]*>/gi) || []).length;
-      tableDepth -= (line.match(/<\/table\s*>/gi) || []).length;
-      tableDepth = Math.max(0, tableDepth);
-    }
-    if (!fence && !tableDepth && (!line.trim() || /^\s*!\[[^\]]*\]\([^)]*\)\s*$/.test(line))) boundaries.push(index + 1);
-  }
-  const following = boundaries.find((line) => line >= goal);
-  if (following) return following;
-  const previous = boundaries.at(-1);
-  if (previous >= goal / 2) return previous;
-  // An exceptionally long ordinary paragraph can be split between complete
-  // source lines; structural blocks continue until their closing delimiter.
-  if (!fence && !tableDepth && new TextEncoder().encode(body).length >= 256 * 1024) return lines.length;
-  return null;
+export function sectionEnd(body, options = {}) {
+  const scanner = new SectionScanner(options);
+  for (const line of body.split("\n")) scanner.append(line);
+  return scanner.end(options);
 }
 
-export async function readSection(name, entry, { from = 1, token, initial, signal } = {}) {
-  let record = initial;
-  const parts = [];
-  let next = from;
-  let baseline = token;
-  for (;;) {
-    record ||= await action("read", { name, ...(entry === undefined ? {} : { entry }), from: next, limit: READER_LINES + 40 }, { signal });
-    baseline ||= record.token;
-    if (record.token !== baseline) throw Object.assign(new Error("阅读期间内容已变化，请检查更新后重新打开；不会拼接不同版本。"), { status: 409 });
-    parts.push(record.body);
-    const body = parts.join("\n");
-    const complete = record.lines.nextLine === null || record.lines.nextLine === undefined;
-    const end = sectionEnd(body, { complete });
-    if (end !== null) {
-      const to = from + end - 1;
-      return { ...record, body: body.split("\n").slice(0, end).join("\n"), lines: {
-        from, to, total: record.lines.total, nextLine: to < record.lines.total ? to + 1 : null,
-        truncated: from !== 1 || to < record.lines.total,
-      } };
+export async function readSection(name, entry, { from = 1, token, initial, signal, to, markdown = true, minimumLine = from, anchor } = {}) {
+  if (!Number.isSafeInteger(from) || from < 1 || to !== undefined && (!Number.isSafeInteger(to) || to < from)) throw invalid("请求范围无效");
+  const scanner = new SectionScanner({ markdown, goal: Math.max(READER_LINES, minimumLine - from + 1), anchor });
+  let record = initial, next = from, baseline = token, total, commit;
+  const finish = (end) => {
+    const last = from + end - 1;
+    return { ...record, body: scanner.body(end), lines: { from, to: last, total,
+      nextLine: last < total ? last + 1 : null, truncated: from !== 1 || last < total } };
+  };
+  for (let request = 0; request < READER_LIMITS.requests; request++) {
+    signal?.throwIfAborted();
+    record ||= await action("read", { name, ...(entry === undefined ? {} : { entry }), from: next,
+      limit: Math.min(READER_LINES + 40, to === undefined ? READER_LINES + 40 : to - next + 1) }, { signal });
+    signal?.throwIfAborted();
+    checkedReadPage(record, { from: next, token: baseline, total });
+    if (commit !== undefined && record.commit !== commit || entry !== undefined && record.entry !== undefined && record.entry !== entry)
+      throw invalid("提交或条目变化");
+    if (record.lines.to < record.lines.from) throw invalid("范围为空");
+    baseline ??= record.token; total ??= record.lines.total; commit ??= record.commit;
+    const lines = record.body.split("\n");
+    for (let index = 0; index < lines.length && (to === undefined || next + index <= to); index++) {
+      try { scanner.append(lines[index]); }
+      catch (error) {
+        const end = scanner.end();
+        if (error.code === "TEXT_BLOCK_TOO_LARGE" && end !== null && from + end - 1 >= minimumLine && (!anchor || scanner.targetLine)) return finish(end);
+        throw error;
+      }
     }
-    if (new TextEncoder().encode(body).length > MAX_SECTION_BYTES)
-      throw Object.assign(new Error("单个表格或代码块过大，无法安全分段；请下载原件查看。"), { status: 413 });
-    next = record.lines.nextLine;
-    record = null;
+    const reachedEnd = to !== undefined && from + scanner.lines.length - 1 >= to;
+    if (reachedEnd && !scanner.explicitClosed) throw invalid("返回边界位于表格或代码块内部");
+    const end = scanner.end({ complete: reachedEnd || record.lines.nextLine === null });
+    if (end !== null && from + end - 1 >= minimumLine && (!anchor || scanner.targetLine)) return finish(end);
+    if (record.lines.nextLine === null) throw invalid("定位目标不在返回内容内");
+    next = record.lines.nextLine; record = null;
   }
+  throw invalid("结构块续读次数超过有界上限，请下载原件查看");
 }

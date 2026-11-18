@@ -21,7 +21,7 @@ export function releaseMedia(element, { images = false } = {}) {
 }
 
 export function replace(element, ...children) {
-  releaseMedia(element);
+  releaseMedia(element, { images: true });
   element.replaceChildren(...children.filter(Boolean));
 }
 

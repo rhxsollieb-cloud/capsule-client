@@ -15,7 +15,7 @@ export function bindReaderShortcuts(reader) {
       .some((element) => !element.hidden && element.getClientRects().length)) return;
     if (document.getSelection()?.isCollapsed === false) return;
     const previous = event.key === "ArrowLeft";
-    if (previous ? !reader.history.length : !reader.record.lines.nextLine) return;
+    if (previous ? !(reader.canBack?.() ?? reader.history.length) : !reader.record.lines.nextLine) return;
     event.preventDefault();
     if (previous) void reader.back();
     else void reader.go(reader.record.lines.nextLine);

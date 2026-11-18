@@ -13,7 +13,7 @@
 | 版本与未知结果 | history/revert/event/events/sync，稳定HTTP错误码和未知结果提示 | 回撤形成新提交；超时、网络中断先核对回执，不自动换基线或重放 |
 | 缓存复用 | sync、run及Skill注册共享跨进程缓存锁 | 同提交与完整本地对象复用；新版本可增量下载，changed只表示checkout变化。默认等锁30秒，CACHE_BUSY及异常锁见[缓存架构](architecture.md#同步与运行) |
 | 小原件复用 | get、preview及工作台原件共享ETag缓存 | 每次重验当前权限；16MiB单文件、128MiB已登记磁盘LRU，Range和大媒体不整包预取，见[流量说明](content-cache.md) |
-| 渐进读取 | read/details行范围，list/entries/query分页，fields/raw/max-chars/out | 大于1MiB的UTF-8原文按完整行有界读取，JSON预算可能提前分页；核对token与nextLine，单行过大明确413，不把摘录当完整正文 |
+| 渐进读取 | read/details行范围，read及正文型details的around/anchor定位，list/entries/query分页，fields/raw/max-chars/out | 大于1MiB的UTF-8原文按完整行有界读取，JSON预算可能提前分页；核对token与nextLine，单行过大明确413，不把摘录当完整正文 |
 | 范围查询 | overview/where/search，以及单cap query | 搜索直接读取实际内容/元数据详述，不增加cap内部索引。候选游标与命中数分开 |
 | 精确文字修改 | edit | 全部分页需同一原token；0匹配失败，多匹配显式all；默认详述，显式路径通过原件文本接口写回 |
 | 管道输入 | 正文及JSON文件参数接受- | 严格UTF-8，默认最多1MiB，拒绝NUL；二进制原件继续使用流式put/get |

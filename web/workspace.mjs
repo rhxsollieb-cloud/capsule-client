@@ -21,6 +21,7 @@ export class Workspace {
     this.selection = 0;
     this.navigationRequest = 0;
     this.viewRequest = 0;
+    this.textReading = null;
     this.databaseDrafts = new Map();
     this.navigation = new NativeNavigator({
       onOpenEntry: (entry) => this.openFile(entry),
@@ -41,6 +42,10 @@ export class Workspace {
     await overviewView(this.content, onOpen, this.onCreate, () => selected === this.selection && !this.cap);
   }
   hasDirty() { return Boolean(this.cap && (this.editor.hasDirty(this.cap.name, this.entry) || this.database?.hasDirty() || this.office?.hasDirty())); }
+  cancelTextRead() {
+    this.textReading?.controller.abort();
+    this.textReading = null;
+  }
   draftState(name) {
     const drafts = [...this.editor.drafts, ...this.databaseDrafts].filter(([key]) => key.startsWith(`${name}\0`)).map(([, draft]) => draft);
     const description = this.inspector.drafts.get(name);
@@ -72,6 +77,7 @@ export class Workspace {
     if (this.cap?.name !== name && this.item?.name !== name) return;
     this.selection++;
     this.viewRequest++;
+    this.cancelTextRead();
     this.office?.destroy();
     this.office = null;
     this.reader?.destroy(); this.reader = null;
@@ -126,6 +132,7 @@ export class Workspace {
     if (!navigation) return false;
     this.editor?.close?.();
     const selected = ++this.selection;
+    this.cancelTextRead();
     this.reader?.destroy(); this.reader = null;
     this.item = item;
     this.database?.destroy?.();
@@ -222,6 +229,9 @@ export class Workspace {
   }
   async load({ background = false } = {}) {
     if (!this.cap) return;
+    const pending = this.textReading;
+    if (background && pending && pending.selection === this.selection && pending.request === this.viewRequest
+      && pending.commit === this.cap.commit && pending.entry === this.entry && pending.details === this.detailsMode && this.mode === "content") return;
     if (background && this.reader?.cap.commit === this.cap.commit) { this.reader.updatePermissions(this.cap); this.chrome(); return; }
     if (this.mode === "skill" && this.skillView && background) { this.skillView.refresh(this.cap); return; }
     if (!background) this.editor?.close?.();
@@ -234,6 +244,7 @@ export class Workspace {
       if (background) { this.office.refresh(cap); return; }
       if (!await this.leaveOffice() || !isCurrent()) return;
     }
+    this.cancelTextRead();
     this.skillView?.destroy();
     this.skillView = null;
     this.database?.destroy?.();
@@ -305,13 +316,16 @@ export class Workspace {
       return;
     }
     if (!background) replace(this.content, node("p", "loading", "正在读取正文…"));
+    const reading = { controller: new AbortController(), selection: selected, request,
+      commit: cap.commit, entry, details: this.detailsMode };
+    this.textReading = reading;
     try {
-      await loadWorkspaceText(this, { cap, entry, isCurrent, background });
+      await loadWorkspaceText(this, { cap, entry, isCurrent, background, signal: reading.controller.signal });
     } catch (error) {
       if (!isCurrent()) return;
       if (error.status === 400 || error.status === 413) fileView(this.content, cap, entry, error.message);
       else this.showError(error);
-    }
+    } finally { if (this.textReading === reading) this.textReading = null; }
   }
   renderFiles(isCurrent) {
     filesView(this.content, this.cap, this.filePage, (entry) => this.openFile(entry), async (offset) => {
@@ -417,6 +431,7 @@ export class Workspace {
       const changed = cap.commit !== this.cap.commit;
       this.cap = cap;
       this.editor?.updatePermissions?.(cap);
+      this.reader?.updatePermissions?.(cap);
       this.inspector.show(cap);
       this.navigation?.update(cap);
       this.chrome();
@@ -432,7 +447,7 @@ export class Workspace {
       }
       if (changed || force || this.displayedCommit !== cap.commit) await this.load({ background: true });
     } catch (error) {
-      if (error.status === 403 && this.cap?.name === name) {
+      if ([401, 403, 404].includes(error.status) && selected === this.selection && this.cap?.name === name) {
         this.cap = { ...this.cap, permissions: { read: false, edit: false, manage: false } };
         this.permissionsChanged();
       }

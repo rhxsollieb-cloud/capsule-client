@@ -25,6 +25,8 @@ src/database/从SQLite自身读取表结构，适配带主键的业务行操作�
 
 客户端顶层client.sqlite保存每个服务端/cap/提交的元数据快照、当前缓存头、Skill登记和运行记录。缓存目录保存Git对象及原生内容，数据库不存放第二份代码或媒体原件。
 
+分段阅读由web/reader.mjs编排，reader-structure.mjs增量识别完整块，reader-pages.mjs负责有界续读，reader-cache.mjs管理当前版本的有限段缓存与相邻历史；read-record.mjs校验页面连续性，不复制整本正文。任意行和锚点通过统一read接口让服务端定位，不在浏览器维护全书索引。workspace-text与Workspace记录在途读取，避免后台轮询重复启动同版本慢读；切换时取消。UI读取断连通过src/ui/read-signal.mjs传给只读API和媒体流，写入与未知结果仍走原回执协议。具体预算与可见行为见[界面说明](ui.md)与[原件缓存](content-cache.md)。
+
 ## 同步与运行
 
 src/cache/content.mjs和content-store.mjs维护独立的轻量原件缓存，服务Office解析与本机媒体桥接；不为单文件读取下载整个Git历史。每次用当前凭据条件重验ETag，权限不缓存，登记和LRU位于client.sqlite，字节仅放content-cache/。web/polling.mjs管理纯查询可见性，web/api.mjs只合并进行中的只读请求。具体容量、回收及查询频率唯一维护于[原件缓存与流量](content-cache.md)。

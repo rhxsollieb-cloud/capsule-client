@@ -94,6 +94,8 @@ node src/cli.mjs guide skills --from 1 --limit 40 --raw
 node src/cli.mjs overview
 node src/cli.mjs where 产品说明.txt
 node src/cli.mjs read 产品说明.txt --from 1 --limit 20
+node src/cli.mjs read 完整书稿.md --around 2000000 --limit 240
+node src/cli.mjs read 完整书稿.md --anchor chapter-100 --limit 240
 node src/cli.mjs search / --text 目标文字 --json-errors
 node src/cli.mjs activity 产品说明.txt
 node src/cli.mjs paths
@@ -113,6 +115,8 @@ CLI get、Office预览和工作台小原件共用有界原件缓存，每次条�
 ## 渐进读取
 
 list查询cap概要，ls展开虚拟位置，entries列举原生内容；read/details分页展开正文与详述。query用于实际文本或SQLite，preview只读提取docx/xlsx并保留提交和截断信息。按响应中的lines.nextLine或nextOffset续读，不把虚拟路径当原件路径。
+
+大书可用read的--around行号或--anchor精确ID由服务端定位，避免逐页下载前文；与--from互斥，返回范围从实际安全起点开始，代码块和表格不从中间截断。CLI支持安全整数范围内的行号，找不到锚点或结构过大时明确返回诊断。需要配套更新并重启服务端与本机桥接进程。
 
 输出默认预算12000字符，可用--fields、--max-chars或--out控制；read/details及guide主题正文支持--raw。正文与JSON文件参数接受`-`作为标准输入。truncated/dataOmitted代表省略，超长单行和搜索候选页的续读限制见[CLI说明](docs/cli-parity.md)。宿主异常可用--json-errors取得机器诊断；Skill非零退出仍返回run回执，不能视为未执行。
 

@@ -89,6 +89,7 @@ export class TextEditor {
       if (next === "read") replace(reading, markdown ? renderMarkdown(draft.body, {
         name: cap.kind === "markdown" || entry ? cap.name : undefined,
         entry: entry || "README.md",
+        token: draft.baseToken,
         onOpenEntry: this.onOpenEntry,
       }) : node("pre", "text-reading", draft.body));
       this.notify(cap, entry, draft.dirty);

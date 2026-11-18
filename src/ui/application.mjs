@@ -15,6 +15,7 @@ import { Authentication } from "../operations/auth.mjs";
 import { authRoute } from "./auth.mjs";
 import { setTimeout as delay } from "node:timers/promises";
 import { skillActor } from "./skill-delegation.mjs";
+import { browserReadSignal } from "./read-signal.mjs";
 
 export function createUiApplication({
   config,
@@ -79,7 +80,10 @@ export function createUiApplication({
         checkSession(request, csrfToken);
         const input = await requestJson(request);
         const actor = skillActor(request, input, { api, skills, connectionKey: authentication.store.key });
-        return json(response, 200, await performAction(actor.api, input, { skills: actor.skills, lease: request.headers["x-capsule-lease"] }));
+        const reading = ["read", "details"].includes(input.action) ? browserReadSignal(request, response, { timeoutMs: 120000 }) : null;
+        try {
+          return json(response, 200, await performAction(actor.api, input, { skills: actor.skills, lease: request.headers["x-capsule-lease"], signal: reading?.signal }));
+        } finally { reading?.dispose(); }
       }
       if (url.pathname === "/ui/upload") {
         if (request.method !== "PUT") throw uiError("该接口需要PUT", 405);
