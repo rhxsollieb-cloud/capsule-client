@@ -2,15 +2,23 @@
 
 人与Agent共用的胶囊客户端，提供命令行和本地图形工作台。两种入口通过统一API浏览和修改服务端知识，按Git提交号同步胶囊，并在本地运行工具。
 
-- 状态：开发中，API v3客户端，使用干净开发数据。
+- 协议：胶囊 API v3。
 - 环境：Node.js 24或以上，Git。
-- 服务端项目位于同级的`capsule-server/`。
 
 Windows 使用 Node.js 24 与 Git for Windows，在 PowerShell 中运行同一客户端；安装、路径及启动方式见[Windows 使用说明](docs/windows.md)。无需 WSL 或本机 Docker，连接远程 ONLYOFFICE 后可在浏览器编辑 Office。
 
 ## 安装与连接
 
-公司同事按[接入与安装说明](docs/team-onboarding.md)使用 GitHub CLI 获取指定分支，或解压管理员提供的精确版本 ZIP。Windows、认领花名和界面登录均有对应步骤；密码随独立员工接入文档交付，不进入源码包。
+推荐用 [GitHub CLI](https://cli.github.com/) 安装和更新。首次克隆公开仓库的默认 `main` 分支，以后在原目录用 `gh repo sync --source rhxsollieb-cloud/capsule-client --branch main` 快进更新。没有 GitHub CLI 时可下载[最新发行 ZIP](https://github.com/rhxsollieb-cloud/capsule-client/releases/latest)。完整步骤见[同事接入说明](docs/team-onboarding.md)。
+
+```powershell
+gh repo clone rhxsollieb-cloud/capsule-client
+Set-Location -LiteralPath '.\capsule-client'
+npm.cmd ci
+npm.cmd run ui
+```
+
+macOS 和 Linux 用相同的克隆命令，然后进入 `capsule-client` 运行以下两条：
 
 ```sh
 npm ci
@@ -36,7 +44,7 @@ npm run ui
 
 本机连接由ConnectionStore管理，前端和Agent CLI默认共用登录会话。CLI显式环境值为兼容旧脚本保留优先级，图形工作台忽略环境中的长期令牌。Windows 默认缓存位于当前用户本地应用目录，其他系统仍随客户端安装位置定位；显式相对CAPSULE_CLIENT_HOME按启动目录解析，跨入口使用同一工作区应配置绝对路径。上传限额等图形服务配置见[界面说明](docs/ui.md)。
 
-连接腾讯云时，API与Office分别使用HTTPS的12090与12091端口，根IP入口保留给ERP；地址和启动方式见[腾讯云连接](docs/tencent-connection.md)。
+管理员单独提供知识库和 Office 的完整连接地址及个人账户。地址填写与本机端口设置见[远程连接说明](docs/tencent-connection.md)。
 
 ## 图形工作台
 
@@ -199,7 +207,7 @@ npm test
 
 check执行ESLint检查。单元测试使用隔离缓存，跨项目集成测试启动真实服务端，验证HTTP、CLI、Git同步和工具升级运行。成功默认静默，失败、跳过和警告可见。
 
-集成测试默认查找同级`capsule-server/`，也可通过`CAPSULE_SERVER_ROOT`指定。缺少服务端源码时该项明确跳过，其余客户端测试仍可执行。
+集成测试默认查找同级`capsule-server/`，也可通过`CAPSULE_SERVER_ROOT`指定。部署及服务器内部实现的相对链接指向同级服务端项目。普通安装只需客户端源码和本机依赖。缺少服务端源码时跨项目集成测试明确跳过，其余客户端测试仍可执行。
 
 前端交互使用独立的 Playwright Chromium 测试集：首次执行 `npm run test:e2e:install` 安装浏览器，再执行 `npm run test:e2e`；`npm run test:e2e:editing` 单独运行正文、数据库、属性和Office编辑场景。它启动隔离的真实服务端和本机工作台，缺少服务端源码时明确失败；失败截图与 trace 留在忽略的本机目录。运行、Office 服务替身及 CI 范围见[前端测试说明](docs/ui-testing.md)。
 

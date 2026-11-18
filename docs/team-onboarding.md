@@ -1,113 +1,80 @@
 # 同事接入胶囊知识库
 
-本文是可进入仓库的安装说明。六个花名及初始密码见管理员单独交付的员工接入文档；不把密码、活动登录配置或管理员密钥放进客户端源码与安装包。
+推荐用 GitHub CLI 安装和更新[胶囊客户端](https://github.com/rhxsollieb-cloud/capsule-client)。首次克隆公开仓库的默认 `main` 分支，以后在同一目录更新。知识库连接地址与个人账户由管理员单独发放。
 
-## 安装前准备
+## 推荐安装 GitHub CLI 版
 
-每台电脑安装 [Node.js 24 或以上](https://nodejs.org/en/download/) 和 [Git](https://git-scm.com/downloads)。推荐另装 [GitHub CLI](https://cli.github.com/) 取得及更新源码。Windows 使用原生 PowerShell，不需要 WSL、Docker、Microsoft Office 或服务端源码；安装工具后重新打开终端。
+先安装 [Node.js 24 LTS](https://nodejs.org/en/download/)、[GitHub CLI](https://cli.github.com/) 和 Git。Windows 选 [Git for Windows](https://gitforwindows.org/)，安装后重新打开 PowerShell。本机工作台和 CLI 使用原生 Node.js，无需 WSL、Docker 或服务端源码。使用远程 ONLYOFFICE 时，也无需安装 Microsoft Office。
 
-```sh
-node --version
-git --version
-```
-
-客户端仓库：[rhxsollieb-cloud/capsule-client](https://github.com/rhxsollieb-cloud/capsule-client)。仓库为私有，GitHub 登录需有该仓库读取权限；知识库花名账户不等于 GitHub 账户。当前可用代码在 `codex/initial-development` 分支，首次克隆明确选此分支。
-
-## 推荐：GitHub CLI
-
-```sh
-gh auth login
-gh repo clone rhxsollieb-cloud/capsule-client -- --branch codex/initial-development
-cd capsule-client
-npm ci
-npm run ui
-```
-
-Windows 将最后两条写为 `npm.cmd ci`、`npm.cmd run ui`，不必修改 PowerShell 执行策略。`gh auth login` 使用自己的 GitHub 登录，不复制其他人的 GitHub token。克隆命令与更新方式参照 [GitHub CLI 官方说明](https://cli.github.com/manual/gh_repo_clone)。
-
-后续升级先保存并停止客户端，再在这个目录执行：
-
-```sh
-git pull --ff-only origin codex/initial-development
-npm ci
-npm run ui
-```
-
-Windows 同样用 npm.cmd。若有自己修改的源码，先保留并核对，不强制覆盖或执行 reset。
-
-## 没有 GitHub CLI：解压安装
-
-从管理员交付包取得 `capsule-client-提交号.zip` 和 `SHA256SUMS`，核对校验值，解压到本人可写的本机目录。ZIP 是精确 Git 提交的源码归档，不含 node_modules、工作区、员工密码或登录配置。没有 GitHub 账号也可使用管理员交付的 ZIP；运行客户端仍需要安装 Git。
-
-Windows PowerShell：
+在本人可写的本机目录打开 PowerShell，确认工具可用并安装客户端：
 
 ```powershell
-Get-FileHash '.\capsule-client-提交号.zip' -Algorithm SHA256
-Expand-Archive -LiteralPath '.\capsule-client-提交号.zip' -DestinationPath '.\Capsule'
-Set-Location '.\Capsule\capsule-client'
+node --version
+git --version
+gh --version
+gh repo clone rhxsollieb-cloud/capsule-client
+Set-Location -LiteralPath '.\capsule-client'
 npm.cmd ci
 npm.cmd run ui
 ```
 
-macOS/Linux：
+若 `gh` 提示登录，用自己的 GitHub 账号执行 `gh auth login` 再克隆。仓库公开，无需申请读取权限。GitHub 账号用于获取客户端，工作台登录使用管理员发放的账户。`npm.cmd` 使用 Node 附带的 Windows 入口，保持现有 PowerShell 执行策略。首次安装依赖需要能访问 npm registry。
 
-```sh
-shasum -a 256 capsule-client-提交号.zip
-unzip capsule-client-提交号.zip -d Capsule
-cd Capsule/capsule-client
-npm ci
-npm run ui
+macOS 和 Linux 使用相同的克隆命令，然后执行 `cd capsule-client`、`npm ci` 和 `npm run ui`。
+
+## 更新 GitHub CLI 版
+
+先保存并停止旧工作台，在原来的克隆目录确认当前分支为 `main`。
+
+```powershell
+git status --short --branch
+gh repo sync --source rhxsollieb-cloud/capsule-client --branch main
+npm.cmd ci
+npm.cmd run ui
 ```
 
-替换示例中的提交号和路径。也可登录仓库后使用 Code → Download ZIP，但须确认下载的是上述分支；[GitHub 源码归档说明](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-source-code-archives)。ZIP 没有 .git，不能 git pull；更新时停止旧客户端，将新版解压到新目录并重新 npm ci，不把旧 node_modules 复制进去。macOS/Linux 更新安装目录时，按 connection/paths 核对并继续使用原缓存位置，具体见[登录说明](login.md#本机保存与隔离)。
+macOS 和 Linux 将 `npm.cmd` 换成 `npm`。更新只做快进，先保留自己的源码修改，遇到分支分叉时按提示核对。在追踪 `origin/main` 的本地 `main` 上，`git pull --ff-only` 也是更新方式。以前克隆了开发分支的同事先运行 `git fetch origin`，再用 `git switch main` 切换。若尚无本地 `main`，用 `git switch --track origin/main` 创建追踪分支。
 
-## 连接并认领花名
+## 备选安装 ZIP
 
-打开启动终端显示的本机地址，默认 `http://127.0.0.1:5183`，在“连接与登录”填写：
+没有安装 GitHub CLI 或需要离线传递源码包时，可从[最新发行版](https://github.com/rhxsollieb-cloud/capsule-client/releases/latest)的 Assets 下载 `capsule-client-提交号.zip` 和同页的 `SHA256SUMS`。浏览器下载无需 GitHub 账号。ZIP 仍需要 Node.js、Git 及 npm 依赖安装。
 
-| 项目 | 填写值 |
-| --- | --- |
-| 知识库服务器 | https://150.158.44.59:12090 |
-| Office 服务（展开 Office 连接设置） | https://150.158.44.59:12091 |
-| 用户名 | 从员工接入文档的六个花名中认领一个 |
-| 密码 | 该花名对应的初始密码 |
+在下载目录打开 PowerShell，把以下「提交号」换成文件名里的实际值，核对 ZIP 的 SHA-256：
 
-不要省略端口：根 IP 的 80/443 是 ERP 入口。日常登录只需要花名和密码，没有另一个共享接入密钥；Office JWT、部署管理令牌和 GitHub token 不属于员工连接参数。客户端保存连接与有期限的登录会话，不保存密码，无需编辑 .env。
-
-先在团队约定的地方登记认领结果，避免两人同时使用一个花名。首次登录后，从知识库图标菜单进入“连接与登录”，修改本人密码，再重新登录。用户名需要更改时由管理员修改，保留同一用户身份。每人使用自己的电脑账户，不向他人复制 connection.sqlite。密码修改会使同一花名的人和 Agent 会话都需重新登录。
-
-## 权限与编辑
-
-管理员针对每个 cap 统一设置所有非管理员的访问档位，不逐员工授权：
-
-| 档位 | 可做的操作 |
-| --- | --- |
-| 读写 | 阅读、下载、复制；普通员工还可占用并编辑、保存和回撤 |
-| 只读 | 阅读、下载、复制；不能修改源 cap，可复制为新 cap 后编辑 |
-| 无访问 | 不显示、不读取、不下载、不复制 |
-
-管理员始终可管理；花名账户均为普通员工（代码角色 editor），新建普通 cap 默认读写。源 cap 只读时，在节点或文件菜单选择“复制为新 cap”，填写全库唯一名称。副本有独立数据和新版本历史，不改源 cap；副本默认读写。已有下载或副本不会因源权限后来变化自动收回。账户只分管理员和普通员工，三档访问设置属于 cap，不属于个人。
-
-编辑前点击“占用并编辑”，看到同事占用时等待释放。明确保存才提交版本；关闭编辑或切换会释放占用，当前页面存活期间保留未保存草稿。保存冲突先核对，不反复点击保存或复制。Office 等待知识库提交确认，不能把“输入已收集”视为保存完成。退出前保存，在启动终端按 Ctrl+C 结束客户端。
-
-## Agent 使用同一登录
-
-人已在本机工作台登录时，Agent 直接使用同一客户端 CLI：
-
-```sh
-node src/cli.mjs me
-node src/cli.mjs ls /
-node src/cli.mjs help
+```powershell
+Get-FileHash -LiteralPath '.\capsule-client-提交号.zip' -Algorithm SHA256
+Get-Content -LiteralPath '.\SHA256SUMS'
 ```
 
-尚未登录时可执行 connection 和 login；login 在终端隐藏输入密码。Agent 非交互使用 --password-file 的私有文件或标准输入，不把密码写进参数、脚本、cap 或命令历史。会话默认12小时；到期重新登录，不额外申请 Agent 密钥。[完整登录与 Agent 说明](login.md)
+校验一致后解压并启动：
+
+```powershell
+Expand-Archive -LiteralPath '.\capsule-client-提交号.zip' -DestinationPath '.\Capsule-提交号'
+Set-Location -LiteralPath '.\Capsule-提交号\capsule-client'
+npm.cmd ci
+npm.cmd run ui
+```
+
+macOS 和 Linux 核对 SHA-256 后解压，进入 `capsule-client` 执行 `npm ci` 和 `npm run ui`。ZIP 不含 Git 历史，升级时先停止旧工作台，再把新包解压到新目录并重新安装依赖。
+
+## 登录
+
+打开启动终端显示的本机地址，默认为 `http://127.0.0.1:5183`。在「连接与登录」中填入管理员提供的知识库服务器地址、用户名及密码，再展开「Office 连接设置」填入管理员提供的 Office 服务地址。首次连接时请核对两个地址，保留 HTTPS、主机名及端口。
+
+首次登录后可在「连接与登录」中修改本人密码，再重新登录。客户端保存连接和有期限的会话。界面与 CLI 可在同一系统用户下使用同一个本机配置。登录和会话变更见[连接与登录说明](login.md)。
+
+## 使用与保留本机配置
+
+- **访问权限**：读写可编辑与保存。只读可阅读、下载或复制为新的可编辑 cap。无访问的 cap 不出现在列表中。管理员为每个 cap 设置普通员工统一的访问档位。
+- **编辑**：进入编辑前先取得占用。遇到占用或版本冲突先核对现有内容。保存 Office 文件后，等知识库确认提交。关闭前保存，在启动终端按 Ctrl+C 停止客户端。
+- **Windows 配置**：两种安装方式默认继续使用当前用户在 `%LOCALAPPDATA%\Capsule` 中的配置和缓存。已有自定义路径时沿用原配置，见[Windows 使用说明](windows.md#本机路径与配置)。
+- **CLI**：在客户端目录运行 `node src/cli.mjs me` 核对身份，再用 `node src/cli.mjs guide cli` 查看日常和批量用法。切换安装目录后可从新目录重新链接 `capsule.cmd`。
+
+macOS 和 Linux 的缓存默认位于安装目录的 `.local`。在原克隆目录更新可沿用该目录。通过 ZIP 换目录前，用 `node src/cli.mjs paths` 和 `node src/cli.mjs connection` 核对本机路径。需要沿用原运行目录时，可用 `CAPSULE_CLIENT_HOME` 和 `CAPSULE_CONFIG_HOME` 分别指定原来的绝对路径。见[本机保存与隔离](login.md#本机保存与隔离)。
 
 ## 常见问题
 
-- Node 版本过低：升级到24或以上，再执行 npm ci；前端服务需保持终端运行。
-- 5183 被占用：不要结束其他人的 Node 进程；按[连接说明](tencent-connection.md)选择另一回环端口。
-- HTTPS、权限或网络报错：核对完整地址和系统时间，保留错误信息交给管理员，不关闭证书校验。
-- 仓库无法克隆：确认自己的 GitHub 账户有仓库读取权限，或使用管理员交付的 ZIP；这不影响花名账户登录知识库。
-- 无法保存：先查看占用、权限与版本提示；草稿保留不代表已经备份到服务端。
-
-维护者生成安装包：先完成检查并提交，然后 `npm run package:client -- 输出目录`。脚本只归档当前 Git 提交并生成 SHA256SUMS 和 release.json，拒绝脏源码和覆盖已有包。
+- **Node、Git 或 gh 未找到**：核对安装和 PATH，重新打开 PowerShell，再运行版本检查。也可按上面的备选步骤使用 ZIP。
+- **端口已占用**：先确认旧客户端已停止。需要同时使用另一个本机端口时，按[远程连接说明](tencent-connection.md)指定独立端口。
+- **HTTPS 或权限报错**：核对管理员提供的完整地址和本机系统时间，保留错误信息交给管理员。保留证书验证。
+- **无法保存**：先查看占用、权限与版本提示。以知识库保存回执判断是否已提交。

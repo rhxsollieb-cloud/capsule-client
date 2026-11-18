@@ -1,22 +1,28 @@
 # Windows 客户端
 
-客户端使用原生 Windows Node.js 24 或以上、Git for Windows 和浏览器。CLI、本机工作台、缓存及 Skill 使用同一套客户端模块，不需要 WSL。连接已部署的服务端和 ONLYOFFICE 时，本机无需 Docker、Microsoft Office 或数据库服务。
+先安装 Windows [Node.js 24 LTS](https://nodejs.org/en/download/)、[Git for Windows](https://gitforwindows.org/) 和 [GitHub CLI](https://cli.github.com/)，安装后重新打开 PowerShell。CLI、本机工作台、缓存及 Skill 使用同一套客户端模块。连接已部署的服务端和 ONLYOFFICE 时，本机无需 WSL、Docker、Microsoft Office 或数据库服务。
 
 ## 安装
 
-将客户端源码放到当前员工可写的本机目录，用 PowerShell 进入项目。以下路径需要替换；路径包含空格或中文时保留引号。
+在本人可写的目录中用 GitHub CLI 克隆公开仓库。若 `gh` 提示登录，使用自己的 GitHub 账号执行 `gh auth login`。
 
 ```powershell
-Set-Location 'C:\Users\你的用户名\源码\capsule-client'
 node --version
 git --version
+gh --version
+gh repo clone rhxsollieb-cloud/capsule-client
+Set-Location -LiteralPath '.\capsule-client'
 npm.cmd ci
 node src/cli.mjs help
 ```
 
 安装 Node 和 Git 后重新打开终端，使 PATH 生效。`node --version`须至少为 v24；`git --version`须能正常返回。`npm.cmd`直接使用随 Node 安装的命令入口，不需要修改 PowerShell 执行策略。跨系统复制源码后重新执行 npm.cmd ci，不复制其他电脑的 node_modules 或 web/vendor。
 
-运行npm.cmd run ui，打开终端输出的回环地址，在连接页填写API、Office地址和管理员分配的用户名密码。员工无需编辑.env文件，CLI使用同一份保存的连接。公司地址见[腾讯云连接说明](tencent-connection.md)，登录与切换规则见[登录说明](login.md)；Windows不需要安装服务端源码。
+运行 `npm.cmd run ui`，打开终端输出的回环地址，在连接页填写管理员单独提供的 API、Office 地址和个人账户。CLI 使用同一份保存的连接。地址填写和切换账户见[登录说明](login.md)。
+
+升级前先保存并关闭旧工作台。在原克隆目录的本地 `main` 分支执行 `gh repo sync --source rhxsollieb-cloud/capsule-client --branch main`，然后运行 `npm.cmd ci` 和 `npm.cmd run ui`。遇到冲突先保留并核对本地修改。
+
+不使用 GitHub CLI 时，可按[同事接入说明](team-onboarding.md#备选安装-zip)校验并解压[最新发行 ZIP](https://github.com/rhxsollieb-cloud/capsule-client/releases/latest)。默认配置和缓存继续保存在当前系统用户的应用目录。已有自定义路径时沿用原设置，换安装目录后可从新目录重新运行 `npm.cmd link`。
 
 ## 本机路径与配置
 
@@ -47,7 +53,7 @@ connection.sqlite含会话令牌，须放在当前员工的NTFS私有目录，�
 npm.cmd run ui
 ```
 
-打开终端输出的地址，默认http://127.0.0.1:5183。连接页选择服务器并登录；工作台只监听本机回环，远程API与ONLYOFFICE使用保存的地址。需要5185时先设置CAPSULE_UI_PORT再启动，见腾讯云连接说明。
+打开终端输出的地址，默认为 `http://127.0.0.1:5183`。连接页选择服务器并登录，工作台只监听本机回环。需要其他本机端口时，启动前设置 CAPSULE_UI_PORT，见[远程连接说明](tencent-connection.md#设置本机端口)。
 
 CLI在另一个使用相同配置目录的PowerShell窗口读取同一份身份：
 
@@ -58,6 +64,8 @@ node src/cli.mjs connection
 node src/cli.mjs paths
 node src/cli.mjs ls /
 ```
+
+包含中文的批量整理操作建议保存为 UTF-8 JSON 文件，再运行 `node src/cli.mjs organize --prepare operations.json --out plan.json`。这样能避开 Windows PowerShell 5.1 向原生命令传送文本时的默认编码差异。
 
 CLI也可执行connection和login完成首次连接，login在终端隐藏输入密码。Agent也通过login使用同一用户名密码，非交互从--password-file文件或-读入。人和Agent默认共享会话及权限，同样12小时到期。显式CAPSULE_TOKEN仅兼容旧脚本，其CLI优先级保留，图形登录不使用该值。可选短命令：npm.cmd link后使用capsule.cmd；权限或策略不允许link时继续用node。切换账户或服务器前保存草稿，有草稿时界面会阻止不属于原用户的切换。
 
@@ -78,4 +86,4 @@ npm.cmd run check
 npm.cmd test
 ```
 
-单元测试使用隔离临时目录；需要同级capsule-server源码的集成测试依实际环境执行，缺少源码时明确跳过。兼容分支、原生Windows CI与员工电脑验收分别报告；macOS本机测试不能视为Windows实测。
+单元测试使用隔离临时目录。需要同级 capsule-server 源码的集成测试缺少源码时明确跳过。公开 Windows CI 从同一 Git 提交打包 ZIP，解压到含中文和空格的路径后安装依赖，核对 `capsule.cmd` 的机器帮助并运行静态检查和 Node 测试。员工本机与公司服务的连接验收单独核对。

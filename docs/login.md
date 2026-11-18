@@ -4,16 +4,16 @@
 
 ## 首次连接
 
-安装依赖后运行`npm run ui`；Windows PowerShell使用`npm.cmd run ui`。打开终端输出的回环地址，首次进入显示连接与登录界面。填写知识库服务器根地址、用户名和密码；Office地址在“Office连接设置”中填写。公司服务器参照[腾讯云地址](tencent-connection.md)，不要省略端口或使用ERP根入口。
+安装依赖后运行 `npm run ui`，Windows PowerShell 使用 `npm.cmd run ui`。打开终端输出的回环地址，在连接页填写管理员单独提供的知识库服务器地址、用户名及密码。Office 地址在「Office 连接设置」填写。参照[远程连接说明](tencent-connection.md)填写完整地址。
 
 登录后进入知识库。cube菜单的“连接与登录”可查看身份、换服务器、换账户、修改密码或退出；“账户与管理”提供管理员工、凭据、cap权限、审计及备份功能，不增加常驻账户栏。
 
 远程密码操作要求HTTPS，本机开发允许回环HTTP。错误密码、停用账户或未配置密码时不会覆盖当前有效连接；网络失败保留资料和诊断，不据此自动注销或重新提交。
 
-人或Agent使用CLI连接、登录：
+人或 Agent 可使用 CLI 连接、登录。先把示例域名和用户名替换为管理员提供的实际值：
 
 ```sh
-node src/cli.mjs connection https://150.158.44.59:12090 --office-url https://150.158.44.59:12091
+node src/cli.mjs connection https://knowledge.example.com --office-url https://office.example.com
 node src/cli.mjs login 你的用户名
 node src/cli.mjs me
 node src/cli.mjs whoami

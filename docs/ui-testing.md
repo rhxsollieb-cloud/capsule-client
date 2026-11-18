@@ -54,6 +54,6 @@ Office 测试使用独立本机 HTTP 服务替身提供 health、command、api.j
 
 失败时截图及 trace 保存在 .local/playwright/results，HTML 报告位于 .local/playwright/report。成功用例不录制视频或保留 trace；测试目录按忽略规则留在本机。报告包含隔离测试的数据和请求，提交源码时不要添加这些运行产物。
 
-默认 GitHub 检查执行 Windows/Ubuntu 的静态检查与 Node 测试，不代表浏览器用例已经执行。需要在 workflow_dispatch 中明确启用 run_e2e，选择兼容的 server_ref，并配置仅供读取私有 capsule-server 源码的 CAPSULE_SERVER_READ_TOKEN secret。未启用时浏览器 job 显示跳过；启用但缺少该 secret 时明确失败并报告未执行，不把基础设施缺失显示为测试通过。凭据原文不进入 workflow 文件。
+公开 GitHub 检查使用 Node 24，在 Windows 和 Ubuntu 上运行静态检查与客户端 Node 测试。Windows 使用当前 Git 提交归档的发行 ZIP，将其解压到含中文和空格的目录后安装依赖，并核对 npm 提供的 `capsule.cmd` 是否能输出机器帮助。
 
-浏览器 CI 使用 Node 24、独立的客户端与服务端 checkout、官方 Chromium，并仅在失败时上传诊断。本地执行成功与远程 CI 成功分别说明，新增配置不会自动触发发布或修改公司数据。
+浏览器流程和跨项目联调需要兼容的服务端源码，按本页的本机步骤运行。公开工作流不拉取服务端仓库。Windows 发行包检查、浏览器验证及连接公司实际服务的验收分别记录。
