@@ -31,7 +31,7 @@ const allowed = {
   organize: ["plan", "dryRun", "limit", "offset"],
   "organize-receipt": ["receipt", "limit", "offset"],
   stat: ["name", "commit"],
-  entries: ["name", "limit", "offset"],
+  entries: ["name", "directory", "limit", "offset"],
   read: ["name", "entry", "from", "around", "anchor", "limit"],
   details: ["name", "from", "around", "anchor", "limit"],
   "save-details": ["name", "body", "description", "token"],
@@ -96,6 +96,7 @@ export async function performAction(api, input, { skills, lease, signal } = {}) 
   const value = select(input, fields);
   if (fields.includes("name")) value.name = validatedPath(value.name, capsuleName);
   if (value.entry !== undefined) value.entry = validatedPath(value.entry, entryPath);
+  if (value.directory !== undefined && value.directory !== "") value.directory = validatedPath(value.directory, entryPath);
   if (fields.includes("token") && (typeof value.token !== "string" || !value.token))
     throw uiError("请先读取当前版本再提交修改");
   if (fields.includes("mountsToken") && (typeof value.mountsToken !== "string" || !value.mountsToken))

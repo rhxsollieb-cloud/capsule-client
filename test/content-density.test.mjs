@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { filesView, mediaView } from "../web/views.mjs";
 import { NativeNavigator } from "../web/native-navigation.mjs";
+import { NativeDirectoryPages } from "../web/native-directory.mjs";
 
 function documentFixture(t) {
   const previous = globalThis.document;
@@ -79,7 +80,8 @@ test("第二列移除说明行后保留文件访问、刷新和数据库切换",
   let refreshes = 0;
   const navigator = Object.assign(Object.create(NativeNavigator.prototype), {
     element: container, cap: { name: "资料", kind: "markdown" }, mode: "files", expanded: new Set(),
-    entries: [{ path: "README.md", size: 12 }], onOpenEntry: (entry) => opened.push(entry),
+    directories: { get: () => ({ items: [{ path: "README.md", size: 12, kind: "file" }] }) },
+    onOpenEntry: (entry) => opened.push(entry),
     load() { refreshes++; },
   });
   navigator.render();
@@ -92,4 +94,45 @@ test("第二列移除说明行后保留文件访问、刷新和数据库切换",
   navigator.render();
   const labels = all(container).filter((item) => item.classList.contains("tab-button")).map((item) => item.textContent);
   assert.deepEqual(labels, ["数据表", "文件"]);
+});
+
+test("有多页配图的书稿首屏显示正文，展开后仅在配图分支续页", async (t) => {
+  const container = documentFixture(t), requested = [], opened = [];
+  const image = (number) => ({ path: `assets/${number}.jpg`, size: 20, kind: "file" });
+  const navigator = Object.assign(Object.create(NativeNavigator.prototype), {
+    element: container, cap: { name: "《书名》.md", kind: "markdown" }, mode: "files", expanded: new Set(),
+    selectedEntry: "README.md", onOpenEntry: (entry) => opened.push(entry),
+  });
+  navigator.directories = new NativeDirectoryPages({
+    request: async (action, input) => {
+      assert.equal(action, "entries");
+      requested.push([input.directory, input.offset]);
+      if (input.directory === "") return {
+        items: [{ path: "assets", size: 0, kind: "directory" }, { path: "README.md", size: 32, kind: "file" }],
+        commit: "same", total: 2, nextOffset: null,
+      };
+      return input.offset === 0
+        ? { items: Array.from({ length: 100 }, (_, i) => image(i)), commit: "same", total: 101, nextOffset: 100 }
+        : { items: [image(100)], commit: "same", total: 101, nextOffset: null };
+    },
+    onChange: () => navigator.render(), onError: (error) => assert.fail(error.message),
+  });
+  const row = (path) => all(container).find((item) => item.dataset.path === path);
+  const more = () => all(container).find((item) => item.attributes["aria-label"] === "加载更多：assets");
+  await navigator.directories.load(navigator.cap.name);
+  assert.equal(row("README.md").classList.contains("selected"), true);
+  assert.equal(more(), undefined);
+  assert.deepEqual(requested, [["", 0]]);
+
+  row("assets").click();
+  await new Promise(setImmediate);
+  assert.ok(row("assets/99.jpg"));
+  assert.ok(more());
+  more().click();
+  await new Promise(setImmediate);
+  assert.ok(row("assets/100.jpg"));
+  row("assets/100.jpg").click();
+  assert.deepEqual(opened, ["assets/100.jpg"]);
+  assert.equal(row("assets/100.jpg").classList.contains("selected"), true);
+  assert.deepEqual(requested, [["", 0], ["assets", 0], ["assets", 100]]);
 });
