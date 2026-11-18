@@ -100,4 +100,4 @@ database当前只支持SQLite。业务行经query/write/table/table-write管理�
 
 guide查询的是本客户端随包说明：无topic先列主题，data讲数据模型，skills讲Skill运行约定；每次返回行范围与续读位置。它不读取业务cap、不创建登记、不启动代码，也不自动取代任何Skill自身的SKILL.md。
 
-具体Skill用details 名称读取SKILL.md，再用help run和skill-status了解实际本机状态。无UI的Skill可直接run；需要协作再显式注册与启动。客户端离线指南、远端cap内容和本机运行状态分别查询，不把其中一种当成另外两种的证明。
+具体Skill用details 名称读取SKILL.md，再用help run和skill-status了解实际本机状态。无UI的Skill可直接run；选中带页面的 Skill 时，工作台会在本机启动或复用协作页。客户端离线指南、远端cap内容和本机运行状态分别查询，不把其中一种当成另外两种的证明。

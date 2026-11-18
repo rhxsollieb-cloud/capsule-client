@@ -14,6 +14,7 @@ import { sendBackupContent } from "./admin.mjs";
 import { Authentication } from "../operations/auth.mjs";
 import { authRoute } from "./auth.mjs";
 import { setTimeout as delay } from "node:timers/promises";
+import { ownerProof } from "../skills/peer-session.mjs";
 import { skillActor } from "./skill-delegation.mjs";
 import { browserReadSignal } from "./read-signal.mjs";
 
@@ -55,6 +56,12 @@ export function createUiApplication({
     try {
       const base = checkRequest(request, server.address().port);
       const url = new URL(request.url, base);
+      if (url.pathname === "/ui/skill-owner" && request.method === "GET") {
+        const proof = skills.sessions && ownerProof(skills.sessions, url.searchParams.get("id"), url.searchParams.get("challenge"));
+        response.writeHead(proof ? 204 : 404, { "Cache-Control": "no-store", ...(proof ? { "X-Skill-Proof": proof } : {}) });
+        response.end();
+        return;
+      }
       if (url.pathname === "/ui/session" && request.method === "GET")
         return json(response, 200, { csrfToken, connectionKey: authentication.store.key, serverUrl: config.serverUrl, officeEditorUrl: config.officeEditorUrl || "http://127.0.0.1:8081" });
       if (url.pathname.startsWith("/ui/auth/")) {
@@ -79,6 +86,10 @@ export function createUiApplication({
         if (request.method !== "POST") throw uiError("该接口需要POST", 405);
         checkSession(request, csrfToken);
         const input = await requestJson(request);
+        if (skills.shared) {
+          skills.shared.ownerPort = server.address().port;
+          skills.shared.ownerIPv6 = server.address().family === "IPv6";
+        }
         const actor = skillActor(request, input, { api, skills, connectionKey: authentication.store.key });
         const reading = ["read", "details"].includes(input.action) ? browserReadSignal(request, response, { timeoutMs: 120000 }) : null;
         try {

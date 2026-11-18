@@ -28,7 +28,13 @@ export class SkillView {
     try {
       const status = await action("skill-status", { name: cap.name });
       if (!this.active() || request !== this.request) return;
-      this.render(status);
+      const first = !this.opened;
+      this.opened = true;
+      if (first && !status.needsConversion && !status.serverError &&
+          ["unregistered", "registered", "stopped"].includes(status.state) && (status.latestHasUI ?? status.hasUI)) {
+        this.status = status;
+        await this.perform("skill-start");
+      } else this.render(status);
     } catch (error) { if (this.active() && request === this.request) this.message(error.message, true); }
     finally { if (this.refreshRequest === request) { this.refreshing = false; this.refreshRequest = null; } }
   }
@@ -43,10 +49,11 @@ export class SkillView {
     this.status = status;
     const text = status.needsConversion ? "此代码尚未整理为 Skill。转换会保留原代码，并建立 SKILL.md 和独立 CLI。"
       : status.updateAvailable ? "服务端已有新提交；当前页面继续使用已注册版本，关闭后再注册新版本。"
-      : status.serverError || status.session?.error || status.lastSession?.error
+      : this.operationError || status.serverError || status.session?.error ||
+      (status.state === "unknown" ? "无法确认上次本机会话，请在原工作台关闭页面后，通过标题菜单重新启动。" : status.lastSession?.error)
       || "";
-    this.message(text, Boolean(status.serverError || status.session?.error));
-    const url = status.state === "running" ? status.session?.url : null;
+    this.message(text, Boolean(this.operationError || status.serverError || status.session?.error));
+    const url = status.state === "running" && !this.foldPeer ? status.session?.url : null;
     if (url && this.frameUrl !== url) {
       const frame = node("iframe", "skill-frame");
       frame.src = url;
@@ -78,8 +85,9 @@ export class SkillView {
     }
     const moreItems = [
       !running && !status?.needsConversion && { label: status?.updateAvailable ? "注册新版本" : status?.registered ? "核对注册" : "注册到本机", icon: "download", disabled: busy || !status, action: current(() => this.perform("skill-register")) },
-      status?.registered && status.hasUI && !running && !status.needsConversion && { label: "启动协作页面", icon: "play", disabled: busy, action: current(() => this.perform("skill-start")) },
-      (running || status?.state === "unknown") && { label: status.state === "unknown" ? "核对旧会话" : "关闭协作页面", icon: "close", disabled: busy, action: current(() => this.perform("skill-stop")) },
+      status && (status.latestHasUI ?? status.hasUI) && !running && status.state !== "unknown" && !status.needsConversion && { label: "启动协作页面", icon: "play", disabled: busy, action: current(() => this.perform("skill-start")) },
+      status?.peer && { label: this.foldPeer ? "显示协作页面" : "收起协作页面", icon: this.foldPeer ? "play" : "close", action: current(() => { this.foldPeer = !this.foldPeer; this.render(status); }) },
+      !status?.peer && (running || status?.state === "unknown") && { label: status.state === "unknown" ? "核对旧会话" : "关闭协作页面", icon: "close", disabled: busy, action: current(() => this.perform("skill-stop")) },
       { label: "运行 Skill CLI", icon: "terminal", disabled: busy, action: current(() => this.onRun(this.cap)) },
       { label: "查看 SKILL.md", icon: "text", action: current(() => this.onOpenEntry("SKILL.md"), true) },
       status?.needsConversion && { label: "转换为 Skill", icon: "code", disabled: busy || !canEdit(this.cap), action: current(() => this.perform("convert-skill")) },
@@ -92,7 +100,7 @@ export class SkillView {
       },
     ].filter(Boolean);
     const detail = [
-      states[status?.state] || "读取本机状态…", status?.commit && `已注册提交：${shortCommit(status.commit)}`,
+      status?.peer ? `协作页面由本机 ${status.session.ownerPort} 工作台管理` : states[status?.state] || "读取本机状态…", status?.commit && `已注册提交：${shortCommit(status.commit)}`,
       status?.registered && !status.hasUI && "此 Skill 仅使用独立 CLI。", this.messageText,
     ].filter(Boolean).join("\n");
     return { state, statusText, detail, moreItems };
@@ -124,13 +132,14 @@ export class SkillView {
     this.refreshRequest = null;
     this.busy = true;
     this.operation = operation;
+    this.operationError = null;
     this.notifyControls();
     try {
       const fields = { name: this.cap.name, ...(operation === "convert-skill" ? { token: this.cap.token } : {}) };
       const result = operation === "convert-skill" ? await withEditLease(this.cap.name, "content", (lease) => action(operation, fields, { lease })) : await action(operation, fields);
       if (operation === "convert-skill") this.onSaved(result);
       else if (this.active()) this.render(result);
-    } catch (error) { if (this.active()) { this.message(error.message, true); this.onError(error); } }
+    } catch (error) { if (this.active()) { this.operationError = error.message; this.message(error.message, true); this.onError(error); } }
     finally { this.busy = false; this.operation = null; if (this.active()) { this.notifyControls(); this.refresh(); } }
   }
 }

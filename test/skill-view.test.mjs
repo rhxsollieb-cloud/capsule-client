@@ -46,7 +46,7 @@ function fixture(t, respond) {
   return { container, options, calls, errors, ran, opened };
 }
 
-test("Skill视图仅显式启动和停止，状态轮询保留活跃iframe与CLI入口", async (t) => {
+test("选中含前端的Skill自动启动，手动关闭后当前视图保持关闭，状态轮询保留活跃iframe与CLI入口", async (t) => {
   let status = registered;
   const { container, options, calls, ran, opened } = fixture(t, (input) => {
     if (input.action === "skill-start") status = running;
@@ -55,8 +55,8 @@ test("Skill视图仅显式启动和停止，状态轮询保留活跃iframe与CLI
   });
   const view = new SkillView(container, cap(), options);
   await settled();
-  assert.deepEqual(calls.map((input) => input.action), ["skill-status"]);
-  assert.ok(command(view, "启动协作页面"));
+  assert.deepEqual(calls.map((input) => input.action), ["skill-status","skill-start","skill-status"]);
+  assert.ok(command(view, "关闭协作页面"));
   assert.deepEqual(view.wrapper.children, [view.notice, view.stage]);
   assert.equal(view.notice.classList.contains("hidden"), true);
   assert.equal(view.controlsInfo().state, "clean");
@@ -64,7 +64,6 @@ test("Skill视图仅显式启动和停止，状态轮询保留活跃iframe与CLI
   await command(view, "查看 SKILL.md").action();
   assert.deepEqual(ran, [view.cap]);
   assert.deepEqual(opened, ["SKILL.md"]);
-  await command(view, "启动协作页面").action();
   await settled();
   const frame = view.stage.children[0];
   assert.equal(frame.tag, "iframe");
@@ -83,7 +82,7 @@ test("Skill视图仅显式启动和停止，状态轮询保留活跃iframe与CLI
 });
 
 test("启动前的迟到status不能卸载新协作iframe", async (t) => {
-  let status = registered, delayNext = false, release;
+  let status = { ...registered, hasUI: false }, delayNext = false, release;
   const { container, options } = fixture(t, (input) => {
     if (input.action === "skill-start") { status = running; return status; }
     if (input.action === "skill-status" && delayNext) { delayNext = false; return new Promise((resolve) => { release = resolve; }); }
@@ -169,7 +168,7 @@ test("标题菜单反映操作忙碌和异常，过期入口不能操作后来�
   const view = new SkillView(container, cap(), { ...options, isCurrent: () => current });
   await settled();
   const run = command(view, "运行 Skill CLI"), start = command(view, "启动协作页面");
-  const pending = start.action();
+  assert.equal(start.disabled, true);
   assert.equal(view.controlsInfo().state, "loading");
   assert.equal(view.controlsInfo().statusText, "启动中");
   assert.equal(command(view, "启动协作页面").disabled, true);
@@ -177,9 +176,35 @@ test("标题菜单反映操作忙碌和异常，过期入口不能操作后来�
   assert.equal(calls.filter((input) => input.action === "skill-start").length, 1);
   current = false;
   finish(running);
-  await pending;
+  await settled();
   await run.action();
   await start.action();
   assert.equal(calls.filter((input) => input.action === "skill-start").length, 1);
   assert.equal(view.controlsInfo(), null);
+});
+
+test("首次选择未注册Skill使用最新入口，启动失败只尝试一次并给出手动入口", async t => {
+  const latest = {state:"unregistered", registered:false, latestHasUI:true};
+  const {container,options,calls} = fixture(t, input => input.action === "skill-start"
+    ? Response.json({error:"缺少本机依赖"},{status:409}) : latest);
+  const view = new SkillView(container,cap(),options);
+  await settled();
+  await view.refresh();
+  assert.equal(calls.filter(x=>x.action==="skill-start").length,1);
+  assert.match(view.notice.textContent,/缺少本机依赖/);
+  assert.ok(command(view,"启动协作页面"));
+});
+
+test("另一个本机工作台持有页面时直接嵌入，收起与轮询都不会重启", async t => {
+  const peer = {...running,peer:true,session:{...running.session,ownerPort:5185}};
+  const {container,options,calls} = fixture(t, () => peer);
+  const view = new SkillView(container,cap(),options);
+  await settled();
+  assert.equal(view.stage.children[0].src,running.session.url);
+  await command(view,"收起协作页面").action();
+  await view.refresh();
+  assert.equal(view.stage.children.length,0);
+  await command(view,"显示协作页面").action();
+  assert.equal(view.stage.children[0].src,running.session.url);
+  assert.ok(calls.every(x=>x.action==="skill-status"));
 });

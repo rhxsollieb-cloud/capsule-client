@@ -1,5 +1,6 @@
 import { synchronize } from "../cache/sync.mjs";
 import { capsuleName } from "../system/paths.mjs";
+import { createOwner, peerSession } from "./peer-session.mjs";
 import { CLI_ENTRY } from "./format.mjs";
 import { readRegistration, saveRegistration, updateRegistrationSession } from "./registry.mjs";
 import { spawnInterface, stopProcess } from "./process.mjs";
@@ -44,7 +45,7 @@ export class SkillManager {
   async registerNow(name) {
     const synced = await synchronize(this.api, name, { kind: "code" });
     const previous = await readRegistration(this.config, name);
-    if (!this.sessions.has(name) && previous?.lastSession && ["starting", "running", "stopping", "unknown"].includes(previous.lastSession.state))
+    if (previous?.lastSession?.id !== this.sessions.get(name)?.id && previous?.lastSession && ["starting", "running", "stopping", "unknown"].includes(previous.lastSession.state))
       throw failure("上次 Skill UI 会话尚未核对，请先关闭旧进程并使用 skill-stop 重置旧登记", "SKILL_SESSION_UNKNOWN");
     if (previous) await verifySkillWorkspace(previous);
     if (active(this.sessions.get(name))) {
@@ -56,35 +57,40 @@ export class SkillManager {
     this.sessions.delete(name);
     return this.status(name);
   }
-  async status(name) {
+  async status(name, principal, cap) {
     name = capsuleName(name);
     const record = await readRegistration(this.config, name);
     let latest;
     let serverError;
     try {
-      latest = await this.api.json(this.api.path(name));
+      latest = cap ?? await this.api.json(this.api.path(name));
     } catch (error) { serverError = this.api.redact(error.message); }
     if (latest && latest.kind !== "code") {
       if (!record) throw failure("只有代码 Skill 可以注册到本机", "SKILL_KIND");
       serverError = "服务端同名实体已不是代码 Skill；本机原会话仍可停止与核对";
       latest = undefined;
     }
-    const session = this.sessions.get(name);
     const previousState = record?.lastSession;
-    const state = session ? session.state : previousState && ["running", "starting", "stopping"].includes(previousState.state) ? "unknown" : record ? "registered" : "unregistered";
+    const local = this.sessions.get(name);
+    const session = local && (!previousState || local.id === previousState.id) ? local : undefined;
+    const peer = !session && await peerSession(record, principal);
+    const state = peer ? "running" : session ? session.state : previousState && ["running", "starting", "stopping"].includes(previousState.state) ? "unknown" : record ? "registered" : "unregistered";
     return { name, registered: Boolean(record), state,
+      ...(typeof latest?.hasUI === "boolean" ? { latestHasUI: latest.hasUI, hasUI: latest.hasUI } : {}),
       ...(latest ? { latestCommit: latest.commit, needsConversion: latest.runtime?.engine !== "node" || latest.runtime?.entry !== CLI_ENTRY } : {}),
       ...(serverError ? { serverError } : {}),
       ...(record ? { commit: record.commit, skillName: record.skillName, description: record.description,
         hasUI: Boolean(record.uiEntry), updateAvailable: latest ? latest.commit !== record.commit : null,
         cli: { command: process.execPath, entry: record.entry, cwd: record.work, state: record.state } } : {}),
-      ...(session ? { session: publicSession(session) } : previousState ? { lastSession: previousState } : {}),
+      ...(peer ? { session: peer, peer: true } : session ? { session: publicSession(session) } : previousState ? { lastSession: previousState } : {}),
     };
   }
-  start(name) {
+  start(name, principal) {
     name = capsuleName(name);
     return this.serial(name, async () => {
       if (active(this.sessions.get(name))) return this.status(name);
+      const existing = await readRegistration(this.config, name);
+      if (await peerSession(existing, principal)) return this.status(name, principal);
       await this.registerNow(name);
       const record = await readRegistration(this.config, name);
       if (!record.uiEntry) throw failure("此 Skill 没有 scripts/ui.mjs；直接使用独立 CLI 即可", "SKILL_NO_UI");
@@ -92,6 +98,8 @@ export class SkillManager {
       const session = spawnInterface(record, { redact: (value) => this.api.redact(value), onExit: async (finished) => {
         await updateRegistrationSession(this.config, name, finished.id, publicSession(finished));
       } });
+      session.owner = createOwner(this.shared.ownerPort, principal, this.shared.ownerIPv6);
+      record.owner = session.owner;
       this.sessions.set(name, session);
       try {
         await saveRegistration(this.config, { ...record, lastSession: publicSession(session) });

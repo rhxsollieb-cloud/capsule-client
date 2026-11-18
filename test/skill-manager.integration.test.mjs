@@ -79,6 +79,24 @@ test("真实注册不执行UI，独立CLI与本机UI共享状态，停止和客�
     const running = await action("skill-start");
     assert.equal(running.state, "running");
     assert.equal(await fetch(running.session.url).then((response) => response.text()), "written-by-cli");
+    const other = createUiApplication({config, api, port:0});
+    try {
+      await other.start();
+      const peerSession = await fetch(other.url + "/ui/session").then(r => r.json());
+      const response = await fetch(other.url + "/ui/action", {
+        method:"POST", headers:{Origin:other.url,"Content-Type":"application/json","X-Capsule-Session":peerSession.csrfToken},
+        body:JSON.stringify({action:"skill-status",name:cap.name}),
+      });
+      const peer = await response.json();
+      assert.equal(peer.peer,true);
+      assert.equal(peer.session.url,running.session.url);
+      assert.equal(peer.session.id,running.session.id);
+      assert.equal(peer.session.ownerPort,Number(new URL(ui.url).port));
+      const proofRecord = await readRegistration(config,cap.name);
+      assert.ok(proofRecord.owner.key);
+      assert.equal(JSON.stringify(peer).includes(proofRecord.owner.key),false);
+      assert.equal((await new SkillManager(api).status(cap.name,"different-user")).state,"unknown");
+    } finally { await other.close(); }
     const pid = Number(await readFile(join(record.state, "ui-started.txt"), "utf8"));
     assert.doesNotThrow(() => process.kill(pid, 0));
     await fetch(new URL("set?value=written-by-ui", running.session.url)).then((response) => response.text());

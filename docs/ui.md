@@ -102,7 +102,7 @@ Skill也复用同一标题行：注册、协作页面启停、运行CLI、查看
 
 ## 内容呈现
 
-- Markdown cap固定README.md与assets/，使用markdown-it解析及DOMPurify清理，支持当前cap内的相对图片、音频和视频嵌入；HTML仅保留前述表格与锚点子集，媒体不跨cap引用。上传默认进入assets/，正文通过编辑保存。完整书稿与配图可由CLI import目录一次导入，不丢弃书稿原有表格与目录锚点。普通text继续平铺；已有text不会自动转换。代码只接受Skill形态，默认呈现SKILL说明与本机注册入口，独立CLI和可选协作页面见[skills.md](skills.md)，原生文件仍可行号编辑。
+- Markdown cap固定README.md与assets/，使用markdown-it解析及DOMPurify清理，支持当前cap内的相对图片、音频和视频嵌入；HTML仅保留前述表格与锚点子集，媒体不跨cap引用。上传默认进入assets/，正文通过编辑保存。完整书稿与配图可由CLI import目录一次导入，不丢弃书稿原有表格与目录锚点。普通text继续平铺；已有text不会自动转换。代码只接受Skill形态，右侧内容区默认嵌入本机协作页，无前端时呈现 SKILL.md，独立CLI和可选协作页面见[skills.md](skills.md)，原生文件仍可行号编辑。
 - 图片使用独立预览画布，音频与视频使用原生媒体控制，不自动播放。
 - Office中央主视图嵌入ONLYOFFICE Docs，直接编辑DOCX/XLSX/PPTX。保存等待cap提交确认，后台刷新保持活跃编辑器。模板和单元格小表单退出主交互，额外的Agent提取与批处理命令保留，见[Office说明](office.md)。
 - 文件集合显示自身原生条目，SQLite使用Tabulator显示表与分页查询结果，业务单元格可编辑后统一提交。无主键、系统表和自定义查询结果只读。数据库媒体仍通过统一内容接口访问，详见[数据库说明](database.md)。

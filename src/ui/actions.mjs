@@ -105,9 +105,9 @@ export async function performAction(api, input, { skills, lease, signal } = {}) 
   if (action.startsWith("skill-")) {
     const method = action.slice("skill-".length);
     if (!skills || typeof skills[method] !== "function") throw uiError("本机skill管理服务尚未启动，请先启动客户端界面服务", 503);
-    await api.json("/api/access/me");
-    await api.json(api.path(value.name));
-    return skills[method](value.name);
+    const identity = await api.json("/api/access/me");
+    const cap = await api.json(api.path(value.name));
+    return skills[method](value.name, identity.principal?.id, cap);
   }
   if (action === "health") return api.json("/api/health");
   if (action === "overview") return overview(api);

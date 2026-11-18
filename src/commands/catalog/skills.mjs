@@ -16,12 +16,12 @@ export const group = {
   {
     name: "skill-status", arity: [1,1], handler: "skills",
     options: {  },
-    help: "skill-status 名称\n经本机客户端服务查询skill登记、提交与人机协作界面状态；不自动重提未知操作。",
+    help: "skill-status 名称\n查询本机登记与页面状态。latestHasUI 表示服务端当前提交提供前端，running 的 session.url 可在本机打开；在工作台选中节点即可嵌入右侧。",
   },
   {
     name: "skill-start", arity: [1,1], handler: "skills",
     options: {  },
-    help: "skill-start 名称\n经本机客户端服务启动可选scripts/ui.mjs人机协作界面，缺失依赖不自动安装。",
+    help: "skill-start 名称\n经本机工作台启动或复用 scripts/ui.mjs，回执包含 session.url。选中有前端的节点也会自动打开；纯 CLI 节点展示 SKILL.md。",
   },
   {
     name: "skill-stop", arity: [1,1], handler: "skills",
